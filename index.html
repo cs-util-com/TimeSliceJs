@@ -10,21 +10,14 @@
   <!-- Tailwind CSS via CDN (for production, embed or self-host for full offline) -->
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3/dist/tailwind.min.css" rel="stylesheet" />
 
-  <!-- PWA Manifest (minimal example) -->
-  <link rel="manifest" href="data:application/json,{
-    &quot;name&quot;: &quot;Frame Extractor&quot;,
-    &quot;short_name&quot;: &quot;Extractor&quot;,
-    &quot;start_url&quot;: &quot;.&quot;,
-    &quot;display&quot;: &quot;standalone&quot;,
-    &quot;background_color&quot;: &quot;#000000&quot;,
-    &quot;theme_color&quot;: &quot;#000000&quot;
-  }" />
+  <!-- Minimal PWA Manifest (inline for demo) -->
+  <link rel="manifest" href="data:application/json,%7B%22name%22%3A%22Frame%20Extractor%22%2C%22short_name%22%3A%22Extractor%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23000000%22%2C%22theme_color%22%3A%22%23000000%22%7D" />
 
   <style>
     /* Minimal dark mode background */
     body {
-      background-color: #0f172a; /* tailwind-zinc-900-ish */
-      color: #f1f5f9;            /* tailwind-zinc-100-ish */
+      background-color: #0f172a; /* a Tailwind-like dark navy */
+      color: #f1f5f9;            /* a Tailwind-like light text color */
       margin: 0;
       padding: 0;
       font-family: sans-serif;
@@ -133,35 +126,34 @@
     <div id="resultMessage" class="mt-4 hidden text-center font-semibold"></div>
   </div>
 
-  <!-- Minimal Logging to Console -->
+  <!-- Main Script -->
   <script>
-    // Service Worker Registration (PWA)
+    // Minimal Service Worker registration code
     if ('serviceWorker' in navigator) {
-      // Minimal inline service worker via Blob
-      const swCode = \`
-        self.addEventListener('install', e => {
-          e.waitUntil(self.skipWaiting());
-        });
-        self.addEventListener('activate', e => {
-          e.waitUntil(self.clients.claim());
-        });
-        // For offline usage, you'd add caches here
-      \`;
+      const swCode = `
+self.addEventListener('install', e => {
+  e.waitUntil(self.skipWaiting());
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(self.clients.claim());
+});
+// For offline usage, you'd add caches here
+`;
+      // Create a blob URL for the SW code
       const swBlob = new Blob([swCode], { type: 'application/javascript' });
       const swURL = URL.createObjectURL(swBlob);
-      navigator.serviceWorker.register(swURL)
+      navigator.serviceWorker
+        .register(swURL)
         .then(() => console.log('Service Worker registered.'))
         .catch(err => console.error('SW registration failed:', err));
     }
 
-    // For offline usage of Tailwind & ffmpeg.wasm, embed or cache them via the SW.
+    // For actual offline usage of Tailwind & ffmpeg.wasm, embed or cache them via the SW.
 
-    // Minimal imports from ffmpeg.wasm
-    // NOTE: We point to a CDN below for demonstration. For full offline use, you must self-host.
+    // Minimal imports from ffmpeg.wasm (CDN for demonstration).
     let ffmpeg;
     let FFmpeg;
 
-    // Lazy-load ffmpeg.wasm
     async function loadFFmpeg() {
       if (!FFmpeg) {
         const { createFFmpeg, fetchFile } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.4/dist/ffmpeg.min.js');
@@ -169,9 +161,7 @@
         window.fetchFile = fetchFile; // make accessible if needed
       }
       if (!ffmpeg) {
-        ffmpeg = FFmpeg({
-          log: true // minimal logging
-        });
+        ffmpeg = FFmpeg({ log: true });
         await ffmpeg.load();
       }
     }
@@ -213,7 +203,7 @@
     });
 
     // Handle dropped files
-    dropZone.addEventListener('drop', async e => {
+    dropZone.addEventListener('drop', e => {
       dropZone.classList.remove('border-blue-400');
       const droppedFiles = [...e.dataTransfer.files];
       handleFileSelection(droppedFiles);
@@ -232,16 +222,12 @@
       metadataList.innerHTML = '';
       metadataContainer.classList.remove('hidden');
 
-      // For each file, attempt to gather minimal metadata
       let index = 1;
       for (const file of files) {
         const listItem = document.createElement('li');
         const fileName = file.name;
-        // In a real app, we might parse deeper metadata with ffprobe.
-        // Here, we just show name & size to demonstrate.
-        // Additional metadata would come from a short ffprobe usage or other library.
-
-        listItem.textContent = \`(\${index}) \${fileName} - \${(file.size / 1024 / 1024).toFixed(2)} MB\`;
+        const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
+        listItem.textContent = `(${index}) ${fileName} - ${fileSizeMB} MB`;
         metadataList.appendChild(listItem);
         index++;
       }
@@ -270,8 +256,8 @@
         }
         if (existingFiles.length > 0) {
           folderWarning.classList.remove('hidden');
-          folderWarning.textContent = \`The folder contains files such as \${existingFiles.slice(0,3).join(', ')}. 
-Click 'Extract Frames' to confirm deleting them, or pick another folder.\`;
+          folderWarning.textContent = `The folder contains files such as ${existingFiles.slice(0,3).join(', ')}. 
+Click 'Extract Frames' to confirm deleting them, or pick another folder.`;
         } else {
           folderWarning.classList.add('hidden');
         }
@@ -292,7 +278,6 @@ Click 'Extract Frames' to confirm deleting them, or pick another folder.\`;
       }
 
       // If existing .jpg files, prompt for deletion
-      let needToDelete = false;
       let existingFileCount = 0;
       for await (const entry of outputFolderHandle.values()) {
         if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.jpg')) {
@@ -300,7 +285,7 @@ Click 'Extract Frames' to confirm deleting them, or pick another folder.\`;
         }
       }
       if (existingFileCount > 0) {
-        const confirmDelete = confirm(\`Folder contains \${existingFileCount} .jpg file(s). Delete them before extraction?\`);
+        const confirmDelete = confirm(`Folder contains ${existingFileCount} .jpg file(s). Delete them before extraction?`);
         if (confirmDelete) {
           // Delete them
           for await (const entry of outputFolderHandle.values()) {
@@ -325,41 +310,31 @@ Click 'Extract Frames' to confirm deleting them, or pick another folder.\`;
         return;
       }
 
-      // Estimate frames & show warning if > 10k (very rough estimate)
-      // We'll assume an average 30fps video and single-minute size for demonstration.
-      // Real logic might parse actual framerate/duration via ffprobe or custom metadata.
+      // A naive approach to estimate total frames:
+      // We'll guess ~6 seconds of video per MB. Real code should parse actual metadata.
       let totalDurationEstimateSec = 0;
       for (const file of videoFiles) {
-        // This is a naive placeholder approach:
-        //   - We guess ~10 MB per minute of video, so 1 MB = ~6 seconds
-        //   - This is just for demonstration, real logic would parse actual video durations.
-        const approximateDurationSec = (file.size / (1024*1024)) * 6;
+        const approximateDurationSec = (file.size / (1024 * 1024)) * 6;
         totalDurationEstimateSec += approximateDurationSec;
       }
       totalFramesEstimate = Math.floor(totalDurationEstimateSec / interval);
 
       if (totalFramesEstimate > 10000) {
-        const proceed = confirm(\`Warning: Estimated \${totalFramesEstimate} frames. Continue?\`);
-        if (!proceed) {
-          return;
-        }
+        const proceed = confirm(`Warning: Estimated ${totalFramesEstimate} frames. Continue?`);
+        if (!proceed) return;
       }
 
       // Process videos sequentially
       let currentVideoIndex = 0;
+      let processedFrames = 0;
       for (const file of videoFiles) {
         currentVideoIndex++;
-        // Convert file to ArrayBuffer for ffmpeg.wasm
         const data = await file.arrayBuffer();
-        const fileName = file.name;
-        const safeFileName = \`input_\${currentVideoIndex}\`; // avoid special chars
-
-        await ffmpeg.FS('writeFile', safeFileName, new Uint8Array(data));
+        const safeFileName = `input_${currentVideoIndex}`;
+        ffmpeg.FS('writeFile', safeFileName, new Uint8Array(data));
 
         // Build filter arguments
-        // Example: -vf fps=1/0.5 -> 2 frames per second
-        // final naming: video_{index}__00-00-xx.xxx.jpg
-        const fpsFilter = \`fps=1/\${interval}\`;
+        const fpsFilter = `fps=1/${interval}`;
         let scaleFilter = '';
         const resolutionChoice = resolutionSelect.value;
         if (resolutionChoice === 'half') {
@@ -368,18 +343,14 @@ Click 'Extract Frames' to confirm deleting them, or pick another folder.\`;
           const w = parseInt(customWidthInput.value, 10);
           const h = parseInt(customHeightInput.value, 10);
           if (w > 0 && h > 0) {
-            scaleFilter = \`,scale=\${w}:\${h}\`;
+            scaleFilter = `,scale=${w}:${h}`;
           }
         }
-        const vfArg = \`-vf \${fpsFilter}\${scaleFilter}\`;
+        const vfArg = `-vf ${fpsFilter}${scaleFilter}`;
 
-        // Use a simple pattern output, then rename after extraction
-        // For demonstration:
-        const outputPattern = \`frame_%08d.jpg\`;
-
-        // Build ffmpeg command
-        // Example: ffmpeg -i input.mp4 -vf fps=1/0.5 -q:v 2 frame_%03d.jpg
-        const command = [
+        // We output to a pattern, then rename
+        const outputPattern = 'frame_%08d.jpg';
+        const cmd = [
           '-i', safeFileName,
           ...vfArg.split(' '),
           '-q:v', '2',
@@ -387,49 +358,46 @@ Click 'Extract Frames' to confirm deleting them, or pick another folder.\`;
         ];
 
         try {
-          await ffmpeg.run(...command);
+          await ffmpeg.run(...cmd);
 
-          // Now read each generated JPG from memory and write to output folder
-          // However, we don't know how many frames were created without scanning.
-          // We'll guess until we fail to read a file.
+          // Now read each generated JPG
           let frameIndex = 1;
           while (true) {
-            const frameName = \`frame_\${String(frameIndex).padStart(8, '0')}.jpg\`;
+            const frameName = `frame_${String(frameIndex).padStart(8, '0')}.jpg`;
             try {
-              const data = ffmpeg.FS('readFile', frameName);
-              // Derive timestamp for naming
-              // In a real app, we'd parse actual timestamps.
-              // For a naive approach, time = frameIndex * interval
+              const frameData = ffmpeg.FS('readFile', frameName);
+              // Derive a naive timestamp
               const timeSec = (frameIndex - 1) * interval;
-              const hh = Math.floor(timeSec / 3600).toString().padStart(2, '0');
-              const mm = Math.floor((timeSec % 3600) / 60).toString().padStart(2, '0');
-              const ss = Math.floor(timeSec % 60).toString().padStart(2, '0');
-              const ms = Math.round((timeSec - Math.floor(timeSec)) * 1000).toString().padStart(3, '0');
+              const hh = String(Math.floor(timeSec / 3600)).padStart(2, '0');
+              const mm = String(Math.floor((timeSec % 3600) / 60)).padStart(2, '0');
+              const ss = String(Math.floor(timeSec % 60)).padStart(2, '0');
+              const ms = String(Math.round((timeSec - Math.floor(timeSec)) * 1000)).padStart(3, '0');
+              const timestamp = `${hh}-${mm}-${ss}.${ms}`;
 
-              const timestamp = \`\${hh}-\${mm}-\${ss}.\${ms}\`;
-              const finalName = \`video_\${String(currentVideoIndex).padStart(2, '0')}__\${timestamp}.jpg\`;
+              const finalName = `video_${String(currentVideoIndex).padStart(2, '0')}__${timestamp}.jpg`;
 
               // Write to folder
               const fileHandle = await outputFolderHandle.getFileHandle(finalName, { create: true });
               const writable = await fileHandle.createWritable();
-              await writable.write(data);
+              await writable.write(frameData);
               await writable.close();
 
-              // Clean up from WASM FS
               ffmpeg.FS('unlink', frameName);
-
               frameIndex++;
+              processedFrames++;
+
+              const percentage = totalFramesEstimate
+                ? (processedFrames / totalFramesEstimate) * 100
+                : 0;
               updateProgress(
-                \`Extracting frames from video #\${currentVideoIndex}...\`,
-                (frameIndex / totalFramesEstimate) * 100
+                `Extracting frames... (video #${currentVideoIndex})`,
+                percentage
               );
             } catch (err) {
-              // Likely ran out of frames
+              // No more frames
               break;
             }
           }
-
-          // Cleanup
           ffmpeg.FS('unlink', safeFileName);
         } catch (err) {
           console.error('ffmpeg extraction error:', err);
@@ -441,17 +409,18 @@ Click 'Extract Frames' to confirm deleting them, or pick another folder.\`;
       resultMessage.textContent = 'All frames successfully extracted!';
       resultMessage.classList.remove('hidden');
 
-      // Optional notification sound
-      // const audio = new Audio('data:audio/wav;base64,...'); // example
+      // Optional audio notification
+      // const audio = new Audio('data:audio/wav;base64,...');
       // audio.play().catch(console.warn);
 
       console.log('Extraction finished.');
     });
 
     function updateProgress(label, percentage) {
-      progressLabel.textContent = \`\${label} (\${Math.floor(percentage)}%)\`;
-      progressBar.style.width = \`\${Math.min(100, Math.floor(percentage))}%\`;
+      progressLabel.textContent = `${label} (${Math.floor(percentage)}%)`;
+      progressBar.style.width = `${Math.min(100, Math.floor(percentage))}%`;
     }
   </script>
+
 </body>
 </html>
