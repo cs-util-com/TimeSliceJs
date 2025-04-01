@@ -4,8 +4,8 @@ const CACHE_NAME = 'frame-extractor-v1';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
-  './manifest.json'
-  // Removed the Tailwind CSS URL to avoid CORS issues in development
+  './icon.svg'
+  // We'll handle manifest.json separately
 ];
 
 // Install event - cache assets with better error handling
@@ -50,7 +50,8 @@ self.addEventListener('fetch', event => {
       event.request.url.includes('ffmpeg') ||
       event.request.url.includes('jsdelivr.net') ||
       event.request.url.includes('unpkg.com') ||
-      event.request.url.includes('skypack.dev')) {
+      event.request.url.includes('skypack.dev') ||
+      event.request.url.includes('manifest.json')) {
     return;
   }
 
