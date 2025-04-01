@@ -10,8 +10,11 @@
   <!-- Tailwind CSS via CDN (for production, embed or self-host for full offline) -->
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3/dist/tailwind.min.css" rel="stylesheet" />
 
-  <!-- Minimal PWA Manifest (inline for demo) -->
-  <link rel="manifest" href="data:application/json,%7B%22name%22%3A%22Frame%20Extractor%22%2C%22short_name%22%3A%22Extractor%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23000000%22%2C%22theme_color%22%3A%22%23000000%22%7D" />
+  <!-- Updated manifest file reference with relative path -->
+  <link rel="manifest" href="./manifest.json" />
+  
+  <!-- Add favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎞️</text></svg>">
 
   <style>
     /* Minimal dark mode background */
@@ -128,24 +131,14 @@
 
   <!-- Main Script -->
   <script>
-    // Minimal Service Worker registration code
+    // Service Worker registration using a proper relative path
     if ('serviceWorker' in navigator) {
-      const swCode = `
-self.addEventListener('install', e => {
-  e.waitUntil(self.skipWaiting());
-});
-self.addEventListener('activate', e => {
-  e.waitUntil(self.clients.claim());
-});
-// For offline usage, you'd add caches here
-`;
-      // Create a blob URL for the SW code
-      const swBlob = new Blob([swCode], { type: 'application/javascript' });
-      const swURL = URL.createObjectURL(swBlob);
-      navigator.serviceWorker
-        .register(swURL)
-        .then(() => console.log('Service Worker registered.'))
-        .catch(err => console.error('SW registration failed:', err));
+      window.addEventListener('load', () => {
+        navigator.serviceWorker
+          .register('./sw.js')
+          .then(() => console.log('Service Worker registered.'))
+          .catch(err => console.error('SW registration failed:', err));
+      });
     }
 
     // For actual offline usage of Tailwind & ffmpeg.wasm, embed or cache them via the SW.
@@ -155,14 +148,28 @@ self.addEventListener('activate', e => {
     let FFmpeg;
 
     async function loadFFmpeg() {
-      if (!FFmpeg) {
-        const { createFFmpeg, fetchFile } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.4/dist/ffmpeg.min.js');
-        FFmpeg = createFFmpeg;
-        window.fetchFile = fetchFile; // make accessible if needed
-      }
-      if (!ffmpeg) {
-        ffmpeg = FFmpeg({ log: true });
-        await ffmpeg.load();
+      try {
+        if (!FFmpeg) {
+          // Try to load from multiple CDN sources
+          try {
+            const { createFFmpeg, fetchFile } = await import('https://unpkg.com/@ffmpeg/ffmpeg@0.12.4/dist/ffmpeg.min.js');
+            FFmpeg = createFFmpeg;
+            window.fetchFile = fetchFile;
+          } catch (err) {
+            console.warn('Primary CDN failed, trying alternative:', err);
+            const { createFFmpeg, fetchFile } = await import('https://cdn.skypack.dev/@ffmpeg/ffmpeg@0.12.4');
+            FFmpeg = createFFmpeg;
+            window.fetchFile = fetchFile;
+          }
+        }
+        if (!ffmpeg) {
+          ffmpeg = FFmpeg({ log: true });
+          await ffmpeg.load();
+        }
+      } catch (err) {
+        console.error('Failed to load FFmpeg:', err);
+        alert('Failed to load video processing library. Please check your internet connection or try a different browser.');
+        throw err;
       }
     }
 
