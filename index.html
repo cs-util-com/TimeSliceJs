@@ -119,20 +119,13 @@
     <!-- =============================================================== -->
     <!-- FFmpeg.wasm Scripts - Using UMD build -->
     <!-- =============================================================== -->
-    <!-- FIX: Added defer attribute -->
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/umd/ffmpeg.js" defer></script>
     <!-- Note: This script exposes the global variable "FFmpegWASM" -->
 
     <!-- ================== -->
     <!-- App Logic -->
     <!-- ================== -->
-    <!-- FIX: Added defer attribute -->
     <script defer>
-        // Use the correct global variable FFmpegWASM
-        // This should now be available because both scripts have 'defer'
-        // and this one comes after the ffmpeg script in the HTML.
-        const { createFFmpeg } = FFmpegWASM;
-
         // Define our own fetchFile function
         const fetchFile = async (file) => {
             if (file instanceof File) {
