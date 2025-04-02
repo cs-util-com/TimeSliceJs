@@ -6,35 +6,33 @@
 </head>
 <body>
   <p id="status">Loading FFmpeg...</p>
-
+  
   <!-- Load the main FFmpeg API from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.10.0/dist/ffmpeg.min.js"></script>
   <script>
     (async () => {
       const { createFFmpeg } = FFmpeg;
-      // Create a dummy worker as a data URL with properly encoded content.
+      // Create a dummy worker data URL
       const dummyWorker = 'data:application/javascript;base64,' + btoa('console.log("Dummy worker loaded.");');
-
+      
+      // Create the FFmpeg instance with our custom options.
       const ffmpeg = createFFmpeg({
         log: true,
         corePath: './ffmpeg-core/ffmpeg-core.js',
-        mainName: 'main',
-        workerPath: dummyWorker, // Set the workerPath to our dummy worker.
+        mainName: 'main',           // Use single-threaded mode
+        workerPath: dummyWorker,    // Use our dummy worker
         locateFile: (file) => {
-          if (file.endsWith('ffmpeg-core.worker.js')) {
-            // Return our dummy worker instead of a file URL.
-            return dummyWorker;
-          }
-          if (file.endsWith('ffmpeg-core.js')) {
-            return './ffmpeg-core/ffmpeg-core.js';
-          }
-          if (file.endsWith('ffmpeg-core.wasm')) {
-            return './ffmpeg-core/ffmpeg-core.wasm';
-          }
-          return file;
+          if (file.endsWith('.wasm')) return './ffmpeg-core/ffmpeg-core.wasm';
+          if (file.endsWith('.worker.js')) return './ffmpeg-core/ffmpeg-core.worker.js';
+          return './ffmpeg-core/' + file;
         }
       });
-
+      
+      // Disable the branch that decodes mainScriptUrlOrBlob by setting it to an empty string.
+      // This prevents the _locateFile function from calling atob on an invalid string.
+      ffmpeg.Module = ffmpeg.Module || {};
+      ffmpeg.Module.mainScriptUrlOrBlob = "";
+      
       try {
         await ffmpeg.load();
         document.getElementById('status').textContent = "FFmpeg loaded successfully!";
