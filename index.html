@@ -12,11 +12,11 @@
   <script>
     (async () => {
       const { createFFmpeg } = FFmpeg;
-      // Set corePath to your self-hosted FFmpeg core folder.
       const ffmpeg = createFFmpeg({
         log: true,
-        corePath: './ffmpeg-core/ffmpeg-core.js', // Adjust path as needed.
-        mainName: 'main' // Use "main" for single-threaded support.
+        corePath: './ffmpeg-core/ffmpeg-core.js', // Ensure this file is copied from @ffmpeg/core/dist/
+        mainName: 'main',   // "main" signals single-threaded support
+        workerPath: ''      // Disable loading of the worker file
       });
 
       try {
