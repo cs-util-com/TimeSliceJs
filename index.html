@@ -2,21 +2,22 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>FFmpeg.wasm Single-Threaded Test</title>
+  <title>FFmpeg.wasm Single-Threaded Self-Hosted Example</title>
 </head>
 <body>
   <p id="status">Loading FFmpeg...</p>
 
+  <!-- Load the main FFmpeg API from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.10.0/dist/ffmpeg.min.js"></script>
   <script>
     (async () => {
       const { createFFmpeg } = FFmpeg;
       const ffmpeg = createFFmpeg({
         log: true,
-        corePath: './node_modules/@ffmpeg/core/dist/ffmpeg-core.js',
-        mainName: 'main',
+        corePath: './node_modules/@ffmpeg/dist/umd/ffmpeg-core.js', 
+        mainName: 'main' // Use "main" for single-threaded support.
       });
-      
+
       try {
         await ffmpeg.load();
         document.getElementById('status').textContent = "FFmpeg loaded successfully!";
