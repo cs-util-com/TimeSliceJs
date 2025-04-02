@@ -117,21 +117,28 @@
     <audio id="success-sound" src="data:audio/mpeg;base64,//NAxAAAAANIAAAAAExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+4DEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWr/+4DEAQAAAAANIAAAAExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+4DEAQAAAAANIAAAAExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+4DEAgAAAAANIAAAAExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+4DEAQQAAAAANIAAAAExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+4DEAQQAAAAANIAAAAExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+4DEAQAAAAANIAAAAOKWkpKSlpaWmpqamqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqv/+4DEAgAAAAANIAAAAExBTUUzLjEwMAAEAAAAAAAAAAYJWAAACkgKCAgICAgICAgKCAgICAgICAoAAAAAAAAAAAAAPE/zMAAAAAAADAAAAAAAAAAAD/+4DEAQQAAAAANIAAAAExBTUUzLjEwMAAEAAAAAAAABgokVQAACkgKCAgICAgICAgKCAgICAgICAoAAAAAAAAAAAAA/E/zMAAAAAAADAAAAAAAAAAAD/+4DEAQQAAAAANIAAAAExBTUUzLjEwMAAEAAAAAAAAAAYKNZAAACkgKCAgICAgICAgKCAgICAgICAoAAAAAAAAAAAAA/k/zMAAAAAAADAAAAAAAAAAAD/+4DEAQAAAAANIAAAAMTVRaWlpqampqaqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqv/+4DEAQAAAAANIAAAAExBTUUzLjEwMAAEAAAAAAAAAAgKTZAAAApICgoKCgoKCgoKCgoKCgoKCgoKAAAAAAAAAAAAAPs/zMAAAAAAADAAAAAAAAAAAD/+4DEAQAAAAANIAAAAExBTUUzLjEwMAAEAAAAAAAAAAgKW5AAAApICgoKCgoKCgoKCgoKCgoKCgoKAAAAAAAAAAAAAPw/zMAAAAAAADAAAAAAAAAAAD/+4DEAgAAAAANIAAAAExBTUUzLjEwMAAEAAAAAAAAAAcKNTAAAApICgoKCgoKCgoKCgoKCgoKCgoKAAAAAAAAAAAAAPhPzMAAAAAAADAAAAAAAAAAAD/+4DEAQQAAAAANIAAAAExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+4DEAQAAAAANIAAAAExBTUUzLjEwMAAAAAAAAAAAAAAA//uAxAEAAAADSAAAAAMTUzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM//uAxAEAAAADSAAAAAMTUzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM//uAxAEAAAADSAAAAAMTUzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM//uAxAEAAAADSAAAAAMTUzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM//uAxAEAAAADSAAAAAMTUzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM//uAxAEAAAADSAAAAAMTUzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM//uAxAEAAAADSAAAAAMTUzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM//uAxAEAAAADSAAAAAMTUzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM" preload="auto"></audio>
 
     <!-- =============================================================== -->
-    <!-- FFmpeg.wasm Scripts - Updated for version 0.12.15 -->
+    <!-- FFmpeg.wasm Scripts - Updated to use latest version with correct modules -->
     <!-- =============================================================== -->
-    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/ffmpeg.min.js"></script>
-    <!-- Replace the util import with one that works properly -->
-    <script src="https://unpkg.com/@ffmpeg/util@0.12.2/dist/umd/index.js"></script>
+    <script type="module">
+        // Import FFmpeg from the ESM CDN
+        import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/esm/index.js';
+        
+        // Make FFmpeg available globally for our app
+        window.FFmpegWasm = { FFmpeg };
+    </script>
 
     <!-- ================== -->
     <!-- App Logic -->
     <!-- ================== -->
     <script>
-        // --- Accessing ffmpeg.wasm library ---
-        // Updated to access FFmpeg properly in version 0.12.15
-        const { FFmpeg } = window;
-        // Fix the fetchFile reference - access it from the correct global object
-        const { fetchFile } = FFmpeg.util;
+        // Define our own fetchFile function since the library import is problematic
+        // This simple implementation works for File objects from input/drop
+        const fetchFile = async (file) => {
+            if (file instanceof File) {
+                return new Uint8Array(await file.arrayBuffer());
+            }
+            throw new Error('Unsupported file type');
+        };
         
         // --- DOM Elements ---
         const appElement = document.getElementById('app');
@@ -169,14 +176,16 @@
             setStatus("Loading FFmpeg core (~31 MB)... This might take a moment.", false);
             setupEventListeners(); // Setup listeners early
             try {
-                // Create ffmpeg instance using the global FFmpeg object
-                // Make sure createFFmpeg is defined (it should be if the script loaded)
-                if (typeof FFmpeg.createFFmpeg === 'undefined') {
-                    throw new Error("FFmpeg library failed to load (createFFmpeg is undefined). Check script tags and network connection.");
+                // Wait briefly to ensure the ES module has loaded
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Create ffmpeg instance using the imported module
+                if (!window.FFmpegWasm || !window.FFmpegWasm.FFmpeg) {
+                    throw new Error("FFmpeg library failed to load. Check script tags and network connection.");
                 }
 
                 console.log("Calling createFFmpeg...");
-                ffmpeg = FFmpeg.createFFmpeg({
+                ffmpeg = new window.FFmpegWasm.FFmpeg({
                     log: true,
                     logger: ({ type, message }) => {
                          // Basic filtering for cleaner logs
