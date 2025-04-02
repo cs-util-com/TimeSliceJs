@@ -14,9 +14,16 @@
       const { createFFmpeg } = FFmpeg;
       const ffmpeg = createFFmpeg({
         log: true,
-        corePath: './ffmpeg-core/ffmpeg-core.js', // Ensure this file is copied from @ffmpeg/core/dist/
-        mainName: 'main',   // "main" signals single-threaded support
-        workerPath: ''      // Disable loading of the worker file
+        mainName: 'main',  // Use "main" for single-threaded support.
+        locateFile: (file) => {
+          // When the library asks for the worker file, return a dummy valid file.
+          if (file.endsWith('ffmpeg-core.worker.js')) {
+            // A minimal valid worker script that does nothing.
+            return 'data:application/javascript;base64,' + btoa('console.log("Dummy worker loaded.");');
+          }
+          // For all other files, load them from the self-hosted folder.
+          return `./ffmpeg-core/${file}`;
+        },
       });
 
       try {
