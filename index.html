@@ -119,8 +119,8 @@
     <!-- =============================================================== -->
     <!-- FFmpeg.wasm Scripts - Using UMD build -->
     <!-- =============================================================== -->
-    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/umd/ffmpeg.js" defer></script>
-    <!-- Note: This script exposes the global variable "FFmpegWASM" -->
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/umd/ffmpeg.js"></script>
+    <!-- Note: This script exposes the global variable "FFmpeg" -->
 
     <!-- ================== -->
     <!-- App Logic -->
@@ -169,21 +169,36 @@
         let createFFmpeg = null; // Variable to hold the function
         let ffmpegLoadError = null; // To store potential load errors
 
-        // Check for FFmpegWASM immediately after this script runs (due to defer)
-        console.log("Inline defer script running. Checking FFmpegWASM...");
-        if (typeof FFmpegWASM !== 'undefined' && typeof FFmpegWASM.createFFmpeg === 'function') {
-            console.log("FFmpegWASM and createFFmpeg found.");
-            // Destructure it now, in the script's top-level scope
-            ({ createFFmpeg } = FFmpegWASM);
-        } else {
-            console.error("CRITICAL: FFmpegWASM global or createFFmpeg not found immediately after defer script execution. Check script load/network tab.");
-            ffmpegLoadError = "FFmpeg library script failed to load or initialize correctly.";
-            // We'll display the error message once the DOM is ready.
-        }
-
         // --- Initialization ---
-        document.addEventListener('DOMContentLoaded', async () => {
-            console.log("DOMContentLoaded event fired. App Initializing...");
+        window.addEventListener('load', async () => {
+            console.log("Window load event fired. App Initializing...");
+
+            // New FFmpeg check inside window load:
+            if (typeof FFmpeg !== 'undefined') {
+                const ffmpegFactory = FFmpeg.createFFmpeg || (FFmpeg.default && FFmpeg.default.createFFmpeg);
+                if (typeof ffmpegFactory === 'function') {
+                    console.log("FFmpeg and createFFmpeg found inside window load.");
+                    createFFmpeg = ffmpegFactory;
+                } else {
+                    console.error("CRITICAL: FFmpeg.createFFmpeg not available (UMD export may differ).");
+                    ffmpegLoadError = "FFmpeg library did not expose createFFmpeg.";
+                    if (statusText) {
+                        setStatus(`FATAL ERROR: ${ffmpegLoadError} Cannot proceed. Please refresh.`, true);
+                        disableControlsOnError();
+                    }
+                    return;
+                }
+            } else {
+                console.error("CRITICAL: FFmpeg global not available. Check script load/network tab.");
+                ffmpegLoadError = "FFmpeg script not loaded.";
+                if (statusText) {
+                    setStatus(`FATAL ERROR: ${ffmpegLoadError} Cannot proceed. Please refresh.`, true);
+                    disableControlsOnError();
+                } else {
+                    alert(`FATAL ERROR: ${ffmpegLoadError} Cannot proceed. UI elements might not be ready.`);
+                }
+                return;
+            }
 
             // FIRST: Check if FFmpeg failed to load BEFORE trying to use it
             if (ffmpegLoadError || !createFFmpeg) {
