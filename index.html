@@ -120,7 +120,8 @@
     <!-- FFmpeg.wasm Scripts - Updated for version 0.12.15 -->
     <!-- =============================================================== -->
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/ffmpeg.min.js"></script>
-    <script src="https://unpkg.com/@ffmpeg/util@0.12.2/dist/util.min.js"></script>
+    <!-- Replace the util import with one that works properly -->
+    <script src="https://unpkg.com/@ffmpeg/util@0.12.2/dist/umd/index.js"></script>
 
     <!-- ================== -->
     <!-- App Logic -->
@@ -129,7 +130,8 @@
         // --- Accessing ffmpeg.wasm library ---
         // Updated to access FFmpeg properly in version 0.12.15
         const { FFmpeg } = window;
-        const { fetchFile } = FFmpegUtil;
+        // Fix the fetchFile reference - access it from the correct global object
+        const { fetchFile } = FFmpeg.util;
         
         // --- DOM Elements ---
         const appElement = document.getElementById('app');
