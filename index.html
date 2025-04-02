@@ -135,7 +135,6 @@
         };
 
         // --- DOM Elements ---
-        // (Keep references the same)
         const appElement = document.getElementById('app');
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
@@ -157,7 +156,6 @@
         const successSound = document.getElementById('success-sound');
 
         // --- Global State ---
-        // (Keep state variables the same)
         let ffmpeg = null;
         let droppedFiles = [];
         let outputDirectoryHandle = null;
@@ -167,36 +165,60 @@
         let processStartTime = 0;
         let ffmpegLoaded = false;
 
+        // --- Prepare FFmpeg ---
+        let createFFmpeg = null; // Variable to hold the function
+        let ffmpegLoadError = null; // To store potential load errors
+
+        // Check for FFmpegWASM immediately after this script runs (due to defer)
+        console.log("Inline defer script running. Checking FFmpegWASM...");
+        if (typeof FFmpegWASM !== 'undefined' && typeof FFmpegWASM.createFFmpeg === 'function') {
+            console.log("FFmpegWASM and createFFmpeg found.");
+            // Destructure it now, in the script's top-level scope
+            ({ createFFmpeg } = FFmpegWASM);
+        } else {
+            console.error("CRITICAL: FFmpegWASM global or createFFmpeg not found immediately after defer script execution. Check script load/network tab.");
+            ffmpegLoadError = "FFmpeg library script failed to load or initialize correctly.";
+            // We'll display the error message once the DOM is ready.
+        }
+
         // --- Initialization ---
-        // NOTE: We still wrap in DOMContentLoaded. While defer guarantees script order
-        // before DOMContentLoaded, using the listener ensures all DOM elements are
-        // definitely ready, which is good practice.
         document.addEventListener('DOMContentLoaded', async () => {
-            console.log("App Initializing...");
-            // We expect FFmpegWASM to be defined here now due to 'defer'
-            if (typeof FFmpegWASM === 'undefined' || typeof FFmpegWASM.createFFmpeg === 'undefined') {
-                console.error("FFmpegWASM global or createFFmpeg not found AFTER defer execution. This shouldn't happen. Check script loading/network.");
-                 setStatus(`FATAL ERROR: FFmpeg library failed to initialize properly. Cannot proceed. Please refresh. Check browser console & network tab.`, true);
-                 disableControlsOnError();
+            console.log("DOMContentLoaded event fired. App Initializing...");
+
+            // FIRST: Check if FFmpeg failed to load BEFORE trying to use it
+            if (ffmpegLoadError || !createFFmpeg) {
+                 console.error("Initialization aborted due to FFmpeg load error:", ffmpegLoadError);
+                 // Ensure UI elements exist before trying to update status
+                 if (statusText && typeof disableControlsOnError === 'function') {
+                    setStatus(`FATAL ERROR: ${ffmpegLoadError || 'FFmpeg createFFmpeg function unavailable.'} Cannot proceed. Please refresh. Check browser console & network tab.`, true);
+                    disableControlsOnError();
+                 } else {
+                     alert(`FATAL ERROR: ${ffmpegLoadError || 'FFmpeg createFFmpeg function unavailable.'} Cannot proceed. UI elements might not be ready.`);
+                 }
                  return; // Stop initialization
             }
 
-            // Destructure createFFmpeg again here, inside the listener scope
-            const { createFFmpeg } = FFmpegWASM;
-
+            // If we reached here, createFFmpeg should be valid
             setStatus("Loading FFmpeg core (~31 MB)... This might take a moment.", false);
-            setupEventListeners(); // Setup listeners early
+            setupEventListeners(); // Setup listeners early (ensure this is defined below)
 
             try {
                 console.log("Calling createFFmpeg...");
+                // Use the 'createFFmpeg' variable we captured earlier
                 ffmpeg = createFFmpeg({
                     log: true,
                     logger: ({ type, message }) => {
-                         if (message.includes('use index=') || message.includes('dropping it')) return;
+                         // Reduce noise from logs
+                         if (message.includes('use index=') || message.includes('dropping it') || message.includes('writing packet') || message.includes('bytes:')) return;
                          console.debug(`[ffmpeg ${type}] ${message}`);
                      },
-                    progress: handleProgress,
-                    corePath: 'https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/umd/ffmpeg-core.js',
+                    progress: handleProgress, // Ensure this is defined below
+                    // Using specific core version compatible with ffmpeg.js 0.12.x
+                    // Note: The original corePath pointed to 0.11.1/umd, which *might* work but using a matching version is safer
+                    // Let's try the wasm version first which is generally preferred
+                     corePath: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm.js',
+                     wasmPath: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm',
+                     // workerPath: 'https://unpkg.com/@ffmpeg/core-mt@0.12.6/dist/umd/ffmpeg-core.worker.js' // For multi-threaded if needed
                 });
 
                 console.log("Calling ffmpeg.load()...");
@@ -205,21 +227,20 @@
                 console.log("ffmpeg.load() completed.");
 
                 setStatus("Ready. Drop video files or click to select.", false);
-                console.log("FFmpeg Loaded Successfully (UMD, single-threaded).");
-                enableControls();
+                console.log("FFmpeg Loaded Successfully.");
+                enableControls(); // Ensure this is defined below
 
             } catch (error) {
-                console.error("Error during FFmpeg initialization:", error);
+                console.error("Error during FFmpeg initialization (createFFmpeg or load):", error);
                 setStatus(`FATAL ERROR loading FFmpeg: ${error.message || 'Unknown error'}. Cannot proceed. Please refresh. Check browser console & network tab.`, true);
-                disableControlsOnError();
+                disableControlsOnError(); // Ensure this is defined below
             }
         });
 
         // --- Event Listeners Setup ---
-        // (Keep function the same)
         function setupEventListeners() {
             if (!dropZone || !fileInput || !selectFolderBtn || !startBtn || !intervalInput) {
-                console.error("One or more critical UI elements not found!");
+                console.error("One or more critical UI elements not found during listener setup!");
                 setStatus("Initialization Error: UI elements missing.", true);
                 return;
             }
@@ -246,11 +267,15 @@
                     checkStartButtonState();
                 }
             });
+            console.log("Event listeners setup complete.");
         }
 
         // --- UI State Functions ---
-        // (Keep functions setStatus, setProgress, enableControls, disableControls, disableControlsOnError, checkStartButtonState the same)
         function setStatus(message, isError = false) {
+            if (!statusText || !statusDiv || !progressBar || !etaText) {
+                console.warn("setStatus called before UI elements are ready or elements are missing.");
+                return;
+            }
             statusText.textContent = message;
             statusText.classList.toggle('text-red-400', isError);
             statusText.classList.toggle('text-green-400', !isError && message.startsWith('✅'));
@@ -264,6 +289,10 @@
         }
 
         function setProgress(message, percentage, eta = '') {
+             if (!statusText || !statusDiv || !progressBar || !etaText) {
+                console.warn("setProgress called before UI elements are ready or elements are missing.");
+                return;
+            }
             statusText.textContent = message;
             statusText.classList.remove('text-red-400', 'text-gray-400', 'text-green-400');
             statusDiv.classList.add('processing');
@@ -274,16 +303,19 @@
         }
 
         function enableControls() {
+            if (!selectFolderBtn || !intervalInput || !resolutionRadios || !startBtn || !dropZone || !fileInput) return;
             selectFolderBtn.disabled = false;
             intervalInput.disabled = false;
             resolutionRadios.forEach(r => r.disabled = false);
-            handleResolutionChange();
+            handleResolutionChange(); // Update custom input state
             checkStartButtonState();
             dropZone.style.pointerEvents = 'auto';
             fileInput.disabled = false;
+            console.log("Controls enabled.");
         }
 
         function disableControls() {
+             if (!startBtn || !selectFolderBtn || !intervalInput || !resolutionRadios || !customWidthInput || !customHeightInput || !dropZone || !fileInput) return;
             startBtn.disabled = true;
             selectFolderBtn.disabled = true;
             intervalInput.disabled = true;
@@ -292,25 +324,22 @@
             customHeightInput.disabled = true;
             dropZone.style.pointerEvents = 'none';
             fileInput.disabled = true;
+             console.log("Controls disabled.");
         }
 
          function disableControlsOnError() {
-             startBtn.disabled = true;
-             selectFolderBtn.disabled = true;
-             intervalInput.disabled = true;
-             resolutionRadios.forEach(r => r.disabled = true);
-             customWidthInput.disabled = true;
-             customHeightInput.disabled = true;
-             dropZone.style.pointerEvents = 'none';
-             fileInput.disabled = true;
+             // Essentially the same as disableControls, ensures everything is off
+             disableControls();
+             console.log("Controls disabled due to error.");
          }
 
         function checkStartButtonState() {
+             if (!startBtn || !customWidthInput || !customHeightInput) return;
             if (!ffmpegLoaded) {
                 startBtn.disabled = true;
                 return;
             }
-            const resolutionMode = document.querySelector('input[name="resolution"]:checked').value;
+            const resolutionMode = document.querySelector('input[name="resolution"]:checked')?.value; // Optional chaining
             let customResValid = true;
             if (resolutionMode === 'custom') {
                  const customW = parseInt(customWidthInput.value, 10);
@@ -321,7 +350,6 @@
         }
 
         // --- Drag & Drop / File Input ---
-        // (Keep functions handleDragOver, handleDragLeave, handleDrop, handleFileSelect the same)
         function handleDragOver(e) {
             e.preventDefault(); e.stopPropagation(); dropZone.classList.add('drag-over');
         }
@@ -332,11 +360,10 @@
             e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('drag-over'); processFiles(e.dataTransfer.files);
         }
         function handleFileSelect(e) {
-            processFiles(e.target.files); e.target.value = null;
+            processFiles(e.target.files); e.target.value = null; // Reset input
         }
 
         // --- Process Files & Metadata ---
-        // (Keep functions processFiles, getAndDisplayMetadata the same)
          async function processFiles(inputFiles) {
             if (!ffmpegLoaded) { setStatus("FFmpeg not ready yet. Please wait or refresh.", true); return; }
             if (isProcessing) return;
@@ -356,6 +383,7 @@
                 listItem.className = "bg-gray-600 p-2 rounded flex justify-between items-center";
                 listItem.innerHTML = `<span class="font-medium truncate pr-2">${String(fileIndex + 1).padStart(2, '0')}: ${file.name}</span> <span class="text-xs text-gray-400 flex-shrink-0">Loading metadata...</span>`;
                 fileList.appendChild(listItem);
+                // Use placeholder metadata for now, replace with actual ffprobe if desired
                 const success = await getAndDisplayMetadata(file, fileIndex, listItem);
                 if(success) metadataSuccessCount++;
             }
@@ -363,135 +391,676 @@
             enableControls(); checkStartButtonState(); updateFrameEstimate();
         }
 
+        // *** Placeholder Metadata Function ***
+        // Replace this with actual ffprobe logic if needed later
         async function getAndDisplayMetadata(file, fileIndex, listItem) {
-             const metadataSpan = listItem.querySelector('.text-xs'); let success = false;
+             const metadataSpan = listItem.querySelector('.text-xs');
+             let success = false;
              try {
-                 const mockMetadata = { duration: Math.random() * 60 + 10, width: 1920, height: 1080, fps: 29.97, codec: 'h264 (mock)', creation_time: new Date().toISOString() };
-                 await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 100));
+                 // Simulate async metadata fetching (e.g., using ffprobe or MediaInfo)
+                 // For now, use basic file properties and random duration/res for demo
+                 const duration = Math.random() * 180 + 30; // Random duration 30-210 seconds
+                 const width = [1280, 1920, 640][Math.floor(Math.random()*3)]; // Random common widths
+                 const height = Math.round(width / (16/9)); // Assume 16:9
+                 const fps = [24, 25, 29.97, 30, 59.94, 60][Math.floor(Math.random()*6)];
+
+                 await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 150)); // Simulate delay
+
+                 const mockMetadata = {
+                     duration: duration,
+                     width: width,
+                     height: height,
+                     fps: fps,
+                     codec: 'h264 (mock)', // Example
+                     creation_time: new Date().toISOString() // Example
+                 };
+
                  fileMetadata.set(file, mockMetadata);
                  metadataSpan.textContent = `${mockMetadata.width}x${mockMetadata.height}, ${mockMetadata.fps.toFixed(2)}fps, ${mockMetadata.duration.toFixed(2)}s`;
-                 metadataSpan.classList.remove('text-gray-400'); metadataSpan.classList.add('text-gray-300');
+                 metadataSpan.classList.remove('text-gray-400');
+                 metadataSpan.classList.add('text-gray-300');
                  success = true;
             } catch (error) {
-                console.error(`Error getting metadata for ${file.name}:`, error);
-                metadataSpan.textContent = `Error fetching metadata`; metadataSpan.classList.add('text-red-400');
+                console.error(`Error getting mock metadata for ${file.name}:`, error);
+                metadataSpan.textContent = `Error fetching metadata`;
+                metadataSpan.classList.add('text-red-400');
                 fileMetadata.set(file, { error: true });
-            } return success;
+            }
+            return success;
         }
 
         // --- Output Folder ---
-        // (Keep functions selectOutputFolder, checkAndDeleteExistingFiles the same)
         async function selectOutputFolder() {
-            if (!window.showDirectoryPicker) { setStatus("Error: File System Access API is not supported.", true); alert("Your browser does not support the File System Access API needed to select an output folder directly. Try Chrome, Edge, or Opera."); return; }
+            if (!window.showDirectoryPicker) {
+                setStatus("Error: File System Access API is not supported.", true);
+                alert("Your browser does not support the File System Access API needed to select an output folder directly. Try a Chromium-based browser (Chrome, Edge, Opera) on desktop.");
+                return;
+            }
             try {
-                const handle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'videoFrameExtractorOutput', startIn: 'pictures'});
-                if (await handle.queryPermission({ mode: 'readwrite' }) !== 'granted') { if (await handle.requestPermission({ mode: 'readwrite' }) !== 'granted') { setStatus("Permission denied for the selected folder.", true); outputDirectoryHandle = null; folderPathP.textContent = ''; checkStartButtonState(); return; } }
-                outputDirectoryHandle = handle; folderPathP.textContent = `Output: ${handle.name}`; folderPathP.title = `Outputting to folder: ${handle.name}`;
-                await checkAndDeleteExistingFiles(); checkStartButtonState();
+                // Request directory access
+                const handle = await window.showDirectoryPicker({
+                    mode: 'readwrite',
+                    id: 'videoFrameExtractorOutput', // Remember last directory
+                    startIn: 'pictures' // Suggest starting location
+                });
+
+                // Check permissions (redundant after getting handle, but good practice)
+                if (await handle.queryPermission({ mode: 'readwrite' }) !== 'granted') {
+                    if (await handle.requestPermission({ mode: 'readwrite' }) !== 'granted') {
+                        setStatus("Permission denied for the selected folder.", true);
+                        outputDirectoryHandle = null;
+                        folderPathP.textContent = '';
+                        checkStartButtonState();
+                        return;
+                    }
+                }
+
+                outputDirectoryHandle = handle;
+                folderPathP.textContent = `Output: ${handle.name}`;
+                folderPathP.title = `Outputting to folder: ${handle.name}`;
+
+                // Check for existing files (optional but good UX)
+                await checkAndDeleteExistingFiles();
+                checkStartButtonState();
+
             } catch (error) {
-                if (error.name === 'AbortError') { console.log("Folder selection cancelled."); } else { console.error("Error selecting directory:", error); setStatus(`Error selecting folder: ${error.message}`, true); }
-                outputDirectoryHandle = null; folderPathP.textContent = ''; checkStartButtonState();
+                if (error.name === 'AbortError') {
+                    console.log("Folder selection cancelled by user.");
+                    // Don't show an error, just leave state as is
+                } else {
+                    console.error("Error selecting directory:", error);
+                    setStatus(`Error selecting folder: ${error.message}`, true);
+                    outputDirectoryHandle = null; // Reset handle on error
+                    folderPathP.textContent = '';
+                }
+                checkStartButtonState(); // Update button state regardless
             }
         }
 
         async function checkAndDeleteExistingFiles() {
-             if (!outputDirectoryHandle) return; const existingJpgs = []; let checkedCount = 0; const checkLimit = 100;
-            try { for await (const entry of outputDirectoryHandle.values()) { checkedCount++; if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.jpg')) { existingJpgs.push(entry.name); if (existingJpgs.length >= 5) break; } if (checkedCount >= checkLimit && existingJpgs.length === 0) break; } }
-            catch (error) { console.error("Error reading directory contents:", error); setStatus(`Error accessing output folder contents: ${error.message}`, true); checkStartButtonState(); return; }
-            if (existingJpgs.length > 0) { const fileListSample = existingJpgs.slice(0, 3).join(', ') + (existingJpgs.length > 3 ? '...' : ''); const confirmation = confirm(`The selected folder "${outputDirectoryHandle.name}" contains existing .jpg files (e.g., ${fileListSample}).\n\n⚠️ Do you want to DELETE ALL .jpg files in this folder before extraction? This cannot be undone!`);
-                if (confirmation) { setStatus("Deleting existing .jpg files...", false); progressBar.style.width = '50%'; let deleteCount = 0; let errorOccurred = false;
-                    try { const filesToDelete = []; for await (const entry of outputDirectoryHandle.values()) { if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.jpg')) { filesToDelete.push(entry.name); } }
-                         console.log(`Attempting to delete ${filesToDelete.length} JPG file(s)...`); for (const fileName of filesToDelete) { try { await outputDirectoryHandle.removeEntry(fileName); deleteCount++; } catch (deleteError) { console.error(`Failed to delete ${fileName}:`, deleteError); errorOccurred = true; } }
-                         progressBar.style.width = '0%'; if (errorOccurred) { setStatus(`Deleted ${deleteCount} file(s), but some errors occurred. Check console.`, true); await new Promise(resolve => setTimeout(resolve, 2500)); } else { setStatus(`Existing .jpg files deleted (${deleteCount} removed).`, false); await new Promise(resolve => setTimeout(resolve, 1500)); }
+             if (!outputDirectoryHandle) return;
+             const existingJpgs = [];
+             let checkedCount = 0;
+             const checkLimit = 100; // Limit checks for performance
+
+             setStatus("Checking output folder for existing JPGs...", false);
+             progressBar.style.width = '0%'; // Reset progress bar for this check
+
+             try {
+                 for await (const entry of outputDirectoryHandle.values()) {
+                     checkedCount++;
+                     if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.jpg')) {
+                         existingJpgs.push(entry.name);
+                         // Stop checking early if we find enough examples
+                         if (existingJpgs.length >= 5) break;
+                     }
+                     // Stop checking if we've scanned many entries without finding JPGs
+                     if (checkedCount >= checkLimit && existingJpgs.length === 0) break;
+                 }
+             } catch (error) {
+                 console.error("Error reading directory contents:", error);
+                 setStatus(`Error accessing output folder contents: ${error.message}. Proceeding without checking.`, true);
+                 await new Promise(resolve => setTimeout(resolve, 2500)); // Show error briefly
+                 setStatus(`Ready. ${droppedFiles.length} video(s) loaded.`, false); // Reset status
+                 checkStartButtonState();
+                 return;
+             }
+
+            // Reset status if check was quick and found nothing
+             if (existingJpgs.length === 0) {
+                 setStatus(`Ready. ${droppedFiles.length} video(s) loaded.`, false);
+             }
+
+             if (existingJpgs.length > 0) {
+                 const fileListSample = existingJpgs.slice(0, 3).join(', ') + (existingJpgs.length > 3 ? '...' : '');
+                 const confirmation = confirm(
+                     `The selected folder "${outputDirectoryHandle.name}" contains existing .jpg files (e.g., ${fileListSample}).\n\n` +
+                     `⚠️ Do you want to DELETE ALL .jpg files in this folder before extraction? This cannot be undone!`
+                 );
+
+                 if (confirmation) {
+                     setStatus("Deleting existing .jpg files...", false);
+                     progressBar.style.width = '50%'; // Show some progress
+                     let deleteCount = 0;
+                     let errorOccurred = false;
+                     try {
+                         // Need to iterate again to get all JPGs for deletion
+                         const filesToDelete = [];
+                         for await (const entry of outputDirectoryHandle.values()) {
+                              if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.jpg')) {
+                                  filesToDelete.push(entry.name);
+                              }
+                         }
+
+                         console.log(`Attempting to delete ${filesToDelete.length} JPG file(s)...`);
+                         for (const fileName of filesToDelete) {
+                             try {
+                                 await outputDirectoryHandle.removeEntry(fileName);
+                                 deleteCount++;
+                             } catch (deleteError) {
+                                 console.error(`Failed to delete ${fileName}:`, deleteError);
+                                 errorOccurred = true;
+                                 // Continue trying to delete others
+                             }
+                         }
+                         progressBar.style.width = '100%'; // Deletion done
+
+                         if (errorOccurred) {
+                             setStatus(`Deleted ${deleteCount} file(s), but some errors occurred. Check console.`, true);
+                             await new Promise(resolve => setTimeout(resolve, 2500));
+                         } else {
+                             setStatus(`Existing .jpg files deleted (${deleteCount} removed).`, false);
+                             await new Promise(resolve => setTimeout(resolve, 1500));
+                         }
+                         // Reset status to ready
                          setStatus(`Ready. ${droppedFiles.length} video(s) loaded.`, false);
-                    } catch (error) { progressBar.style.width = '0%'; console.error("Error during bulk file deletion:", error); setStatus(`Error deleting existing files: ${error.message}. Proceeding without deletion.`, true); await new Promise(resolve => setTimeout(resolve, 2500)); setStatus(`Ready. ${droppedFiles.length} video(s) loaded.`, false); }
-                } else { setStatus(`Proceeding without deleting existing files in ${outputDirectoryHandle.name}.`, false); await new Promise(resolve => setTimeout(resolve, 1500)); setStatus(`Ready. ${droppedFiles.length} video(s) loaded.`, false); }
-            } else { console.log("No existing .jpg files found."); }
+                         progressBar.style.width = '0%';
+
+                     } catch (error) {
+                         progressBar.style.width = '0%';
+                         console.error("Error during bulk file deletion:", error);
+                         setStatus(`Error deleting existing files: ${error.message}. Proceeding without deletion.`, true);
+                         await new Promise(resolve => setTimeout(resolve, 2500));
+                         setStatus(`Ready. ${droppedFiles.length} video(s) loaded.`, false);
+                     }
+                 } else {
+                     // User chose not to delete
+                     setStatus(`Proceeding without deleting existing files in ${outputDirectoryHandle.name}.`, false);
+                     await new Promise(resolve => setTimeout(resolve, 1500));
+                     setStatus(`Ready. ${droppedFiles.length} video(s) loaded.`, false);
+                 }
+             } else {
+                 console.log("No existing .jpg files found in the output directory.");
+                 // Status might have been reset already, ensure it's correct
+                 if (!isProcessing) setStatus(`Ready. ${droppedFiles.length} video(s) loaded.`, false);
+             }
         }
 
+
         // --- Resolution Control ---
-        // (Keep functions handleResolutionChange, getResolutionArgs the same)
         function handleResolutionChange() {
-             const selectedValue = document.querySelector('input[name="resolution"]:checked').value; const showCustom = selectedValue === 'custom';
-             customWidthInput.classList.toggle('hidden', !showCustom); customHeightInput.classList.toggle('hidden', !showCustom); customX.classList.toggle('hidden', !showCustom);
-             customWidthInput.disabled = !showCustom; customHeightInput.disabled = !showCustom;
-             if (showCustom) { const firstFile = droppedFiles[0]; if (firstFile && fileMetadata.has(firstFile)) { const meta = fileMetadata.get(firstFile); if (meta && meta.width && !customWidthInput.value) { customWidthInput.value = Math.round(meta.width / 2) || ''; } if (meta && meta.height && !customHeightInput.value) { customHeightInput.value = Math.round(meta.height / 2) || ''; } } checkStartButtonState(); }
-             else { checkStartButtonState(); } updateFrameEstimate();
+             const selectedValue = document.querySelector('input[name="resolution"]:checked')?.value;
+             const showCustom = selectedValue === 'custom';
+
+             customWidthInput.classList.toggle('hidden', !showCustom);
+             customHeightInput.classList.toggle('hidden', !showCustom);
+             customX.classList.toggle('hidden', !showCustom);
+
+             customWidthInput.disabled = !showCustom || isProcessing;
+             customHeightInput.disabled = !showCustom || isProcessing;
+
+             // Pre-fill custom with half resolution of first video if switching to custom
+             if (showCustom && !isProcessing) {
+                 const firstFile = droppedFiles[0];
+                 if (firstFile && fileMetadata.has(firstFile)) {
+                     const meta = fileMetadata.get(firstFile);
+                     if (meta && meta.width && !customWidthInput.value) {
+                         customWidthInput.value = Math.round(meta.width / 2) || '';
+                     }
+                     if (meta && meta.height && !customHeightInput.value) {
+                         customHeightInput.value = Math.round(meta.height / 2) || '';
+                     }
+                 }
+                 checkStartButtonState(); // Check validity now that inputs might have values
+             } else {
+                 checkStartButtonState(); // Always check button state on change
+             }
+             updateFrameEstimate(); // Update estimate based on resolution (though it doesn't directly impact frame count here)
         }
+
          function getResolutionArgs(metadata) {
-            const selectedRes = document.querySelector('input[name="resolution"]:checked').value; if (!metadata || !metadata.width || !metadata.height) { console.warn("Metadata missing width/height, cannot apply resolution scaling."); return []; }
-            switch (selectedRes) { case 'full': return []; case 'half': const halfW = Math.max(1, Math.round(metadata.width / 2)); const halfH = Math.max(1, Math.round(metadata.height / 2)); return ['-s', `${halfW}x${halfH}`]; case 'custom': const customW = parseInt(customWidthInput.value, 10); const customH = parseInt(customHeightInput.value, 10); if (customW > 0 && customH > 0) { return ['-s', `${customW}x${customH}`]; } else { console.warn("Invalid custom dimensions, using full resolution."); setStatus("Warning: Invalid custom dimensions, using original resolution.", true); return []; } default: return []; }
+            const selectedRes = document.querySelector('input[name="resolution"]:checked')?.value;
+
+            // Handle missing metadata gracefully - return no scaling args
+            if (!metadata || typeof metadata.width !== 'number' || typeof metadata.height !== 'number' || metadata.width <= 0 || metadata.height <= 0 ) {
+                console.warn("Metadata missing valid width/height, cannot apply resolution scaling. Using original.");
+                // If custom was selected but metadata is bad, maybe revert status or warn user?
+                if (selectedRes === 'custom' || selectedRes === 'half') {
+                   setStatus("Warning: Video metadata missing/invalid, using original resolution.", true); // Temporary warning
+                }
+                return []; // No scaling
+            }
+
+            switch (selectedRes) {
+                case 'full':
+                    return []; // No args needed
+                case 'half':
+                    const halfW = Math.max(1, Math.round(metadata.width / 2));
+                    const halfH = Math.max(1, Math.round(metadata.height / 2));
+                    return ['-vf', `scale=${halfW}:${halfH}`]; // Use scale filter
+                case 'custom':
+                    const customW = parseInt(customWidthInput.value, 10);
+                    const customH = parseInt(customHeightInput.value, 10);
+                    if (customW > 0 && customH > 0) {
+                        return ['-vf', `scale=${customW}:${customH}`]; // Use scale filter
+                    } else {
+                        console.warn("Invalid custom dimensions provided, using original resolution.");
+                        setStatus("Warning: Invalid custom dimensions, using original resolution.", true);
+                        return []; // Fallback to no scaling
+                    }
+                default:
+                    return []; // Default to no scaling
+            }
         }
 
         // --- Frame Estimation & Formatting ---
-        // (Keep functions updateFrameEstimate, handleProgress, formatSeconds, formatTimestamp the same)
         function updateFrameEstimate() {
-            totalEstimatedFrames = 0; const interval = parseFloat(intervalInput.value); if (isNaN(interval) || interval <= 0) { frameEstimateP.textContent = 'Invalid interval'; frameEstimateP.classList.remove('text-yellow-400'); return; } let filesWithMetadata = 0;
-            droppedFiles.forEach(file => { const meta = fileMetadata.get(file); if (meta && meta.duration > 0 && !meta.error) { totalEstimatedFrames += Math.ceil(meta.duration / interval); filesWithMetadata++; } });
-            if (filesWithMetadata > 0) { const estimateText = `Est. ~${totalEstimatedFrames.toLocaleString()} frames from ${filesWithMetadata} video(s)`; frameEstimateP.textContent = estimateText; if (totalEstimatedFrames > 10000) { frameEstimateP.textContent += ' (Warning: High count!)'; frameEstimateP.classList.add('text-yellow-400'); } else { frameEstimateP.classList.remove('text-yellow-400'); } } else if (droppedFiles.length > 0) { frameEstimateP.textContent = 'Estimating... (videos need metadata)'; frameEstimateP.classList.remove('text-yellow-400'); } else { frameEstimateP.textContent = ''; frameEstimateP.classList.remove('text-yellow-400'); }
+            totalEstimatedFrames = 0;
+            const interval = parseFloat(intervalInput.value);
+            if (isNaN(interval) || interval <= 0) {
+                frameEstimateP.textContent = 'Invalid interval';
+                frameEstimateP.classList.remove('text-yellow-400');
+                return;
+            }
+
+            let filesWithMetadata = 0;
+            droppedFiles.forEach(file => {
+                const meta = fileMetadata.get(file);
+                // Ensure meta exists, is not an error, and has a positive duration
+                if (meta && !meta.error && typeof meta.duration === 'number' && meta.duration > 0) {
+                    totalEstimatedFrames += Math.ceil(meta.duration / interval);
+                    filesWithMetadata++;
+                }
+            });
+
+            if (filesWithMetadata > 0) {
+                 const estimateText = `Est. ~${totalEstimatedFrames.toLocaleString()} frames from ${filesWithMetadata} video(s)`;
+                 frameEstimateP.textContent = estimateText;
+                 if (totalEstimatedFrames > 10000) {
+                     frameEstimateP.textContent += ' (Warning: High count!)';
+                     frameEstimateP.classList.add('text-yellow-400');
+                 } else {
+                     frameEstimateP.classList.remove('text-yellow-400');
+                 }
+            } else if (droppedFiles.length > 0) {
+                 // Files are loaded, but metadata isn't ready or is missing/invalid
+                 frameEstimateP.textContent = 'Estimating... (videos need valid metadata)';
+                 frameEstimateP.classList.remove('text-yellow-400');
+            } else {
+                 // No files loaded
+                 frameEstimateP.textContent = '';
+                 frameEstimateP.classList.remove('text-yellow-400');
+            }
         }
-        let currentFileIndex = 0; let totalFiles = 0; let lastProgressTime = 0; let lastProgressRatio = 0;
-        function handleProgress({ ratio }) {
-             if (!isProcessing || !ffmpegLoaded) return; const now = Date.now(); const progressPercent = Math.min(100, Math.max(0, ratio * 100)); const overallRatio = (currentFileIndex + Math.min(1, Math.max(0, ratio))) / totalFiles; const overallPercent = Math.min(100, Math.max(0, overallRatio * 100)); let eta = '';
-             if (processStartTime > 0 && overallRatio > 0.01 && now - processStartTime > 2000) { const elapsedSeconds = (now - processStartTime) / 1000; const estimatedTotalSeconds = elapsedSeconds / overallRatio; const remainingSeconds = Math.max(0, estimatedTotalSeconds - elapsedSeconds); if (remainingSeconds > 1) { eta = formatSeconds(remainingSeconds); } }
-             setProgress( `Processing video ${currentFileIndex + 1}/${totalFiles}: ${progressPercent.toFixed(1)}%`, overallPercent, eta ); lastProgressTime = now; lastProgressRatio = ratio;
+
+        // --- Progress Handling ---
+        let currentFileIndex = 0;
+        let totalFiles = 0;
+
+        function handleProgress({ ratio, time }) {
+             if (!isProcessing || !ffmpegLoaded) return;
+
+             const progressPercent = Math.min(100, Math.max(0, ratio * 100));
+
+             // Calculate overall progress based on files completed + current file progress
+             const overallRatio = (currentFileIndex + Math.min(1, Math.max(0, ratio))) / totalFiles;
+             const overallPercent = Math.min(100, Math.max(0, overallRatio * 100));
+
+             let eta = '';
+             const now = Date.now();
+
+             // Calculate ETA based on overall progress
+             // Avoid calculating ETA very early on or if progress is zero
+             if (processStartTime > 0 && overallRatio > 0.01 && now - processStartTime > 3000) { // Require some time elapsed and progress > 1%
+                 const elapsedSeconds = (now - processStartTime) / 1000;
+                 const estimatedTotalSeconds = elapsedSeconds / overallRatio;
+                 const remainingSeconds = Math.max(0, estimatedTotalSeconds - elapsedSeconds);
+
+                 if (remainingSeconds > 1) {
+                     eta = formatSeconds(remainingSeconds);
+                 }
+             }
+
+             // Display progress for the current file and overall ETA
+             setProgress(
+                 `Processing video ${currentFileIndex + 1}/${totalFiles}: ${progressPercent.toFixed(1)}%`,
+                 overallPercent,
+                 eta
+             );
         }
-        function formatSeconds(seconds) { seconds = Math.round(seconds); const h = Math.floor(seconds / 3600); const m = Math.floor((seconds % 3600) / 60); const s = Math.floor(seconds % 60); let str = ''; if (h > 0) str += `${h}h `; if (h > 0 || m > 0) str += `${String(m).padStart(h > 0 ? 2 : 1, '0')}m `; str += `${String(s).padStart(2, '0')}s`; return str.trim(); }
-        function formatTimestamp(seconds) { const totalSeconds = seconds; const hh = String(Math.floor(totalSeconds / 3600)).padStart(2, '0'); const mm = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0'); const ss = String(Math.floor(totalSeconds % 60)).padStart(2, '0'); const ms = String(Math.floor((totalSeconds - Math.floor(totalSeconds)) * 1000)).padStart(3, '0'); return `${hh}-${mm}-${ss}.${ms}`; }
+
+        function formatSeconds(seconds) {
+             seconds = Math.round(seconds);
+             const h = Math.floor(seconds / 3600);
+             const m = Math.floor((seconds % 3600) / 60);
+             const s = Math.floor(seconds % 60);
+             let str = '';
+             if (h > 0) str += `${h}h `;
+             if (h > 0 || m > 0) str += `${String(m).padStart(h > 0 ? 2 : 1, '0')}m `; // Pad minutes if hours exist
+             str += `${String(s).padStart(str ? 2 : 1, '0')}s`; // Pad seconds if min/hr exist
+             return str.trim();
+         }
+
+        function formatTimestamp(seconds) {
+             const totalSeconds = Math.max(0, seconds); // Ensure non-negative
+             const hh = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+             const mm = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+             const ss = String(Math.floor(totalSeconds % 60)).padStart(2, '0');
+             // Ensure milliseconds calculation is robust for small floating point inaccuracies
+             const ms = String(Math.round((totalSeconds - Math.floor(totalSeconds)) * 1000)).padStart(3, '0');
+             return `${hh}-${mm}-${ss}.${ms}`;
+        }
 
         // --- Core Extraction Logic ---
-        // (Keep function startExtraction the same)
         async function startExtraction() {
             if (isProcessing) return;
-            const interval = parseFloat(intervalInput.value); if (isNaN(interval) || interval <= 0) { setStatus("Invalid frame interval.", true); intervalInput.focus(); return; } if (droppedFiles.length === 0) { setStatus("No video files selected.", true); return; } if (!outputDirectoryHandle) { setStatus("Output folder not selected.", true); selectFolderBtn.focus(); return; } const resolutionMode = document.querySelector('input[name="resolution"]:checked').value; if (resolutionMode === 'custom') { const customW = parseInt(customWidthInput.value, 10); const customH = parseInt(customHeightInput.value, 10); if (!(customW > 0 && customH > 0)) { setStatus("Invalid custom dimensions.", true); customWidthInput.focus(); return; } }
-            if (!ffmpegLoaded || !ffmpeg) { setStatus("FFmpeg is not ready or failed to load properly. Cannot start extraction. Please refresh.", true); console.error("Attempted to start extraction but ffmpeg is not valid:", ffmpeg); return; }
-            updateFrameEstimate(); if (totalEstimatedFrames > 10000) { const proceed = confirm(`⚠️ WARNING ⚠️\n\nEst. ${totalEstimatedFrames.toLocaleString()} frames.\nThis may take a long time, use lots of disk space, and could slow down your browser.\n\nContinue anyway?`); if (!proceed) { setStatus("Extraction cancelled by user.", false); return; } }
-            isProcessing = true; disableControls(); setStatus("Starting extraction process...", false); progressBar.style.width = '0%'; progressBar.classList.remove('bg-green-500', 'bg-red-500'); progressBar.classList.add('bg-blue-500'); etaText.textContent = ''; processStartTime = Date.now(); totalFiles = droppedFiles.length; currentFileIndex = 0;
-            const fpsFilter = `fps=1/${interval}`; const outputFormat = 'jpg'; const qualityArg = ['-q:v', '2']; let totalFramesExtractedOverall = 0; let filesProcessedSuccessfully = 0; let filesSkipped = 0; const tempOutputDir = `/output_${Date.now()}`;
-            try {
-                for (let i = 0; i < droppedFiles.length; i++) {
-                    currentFileIndex = i; const file = droppedFiles[i]; const fileIndexString = String(i + 1).padStart(String(totalFiles).length, '0'); const baseOutputName = `video_${fileIndexString}`; const tempInputFilename = `input_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`; const metadata = fileMetadata.get(file);
-                    if (!metadata || metadata.error || typeof metadata.duration !== 'number' || metadata.duration <= 0) { console.warn(`Skipping ${file.name} (metadata error or zero duration).`); setStatus(`Skipping ${file.name} (metadata issue)`, true); filesSkipped++; await new Promise(resolve => setTimeout(resolve, 1500)); continue; }
-                    setProgress(`Preparing video ${i + 1}/${totalFiles}: ${file.name}`, (i / totalFiles) * 100); await new Promise(resolve => setTimeout(resolve, 50));
-                    let currentFileFrames = 0; let ffmpegRunSuccess = false;
-                    try {
-                         console.log(`Writing ${file.name} to FS as ${tempInputFilename}`); const fileData = await fetchFile(file); ffmpeg.FS('writeFile', tempInputFilename, fileData);
-                         try { ffmpeg.FS('rmdir', tempOutputDir); } catch (e) { /* ignore */ } try { ffmpeg.FS('mkdir', tempOutputDir); } catch (e) { console.error("Failed to create temp output dir:", e); throw e; }
-                         const resolutionArgs = getResolutionArgs(metadata); const outputPattern = `${tempOutputDir}/frame_%07d.${outputFormat}`; const ffmpegArgs = [ '-hide_banner', '-i', tempInputFilename, '-vf', fpsFilter, ...resolutionArgs, ...qualityArg, '-vsync', 'vfr', outputPattern ]; console.log(`Running FFmpeg for ${file.name}: ffmpeg ${ffmpegArgs.join(' ')}`); setStatus(`Processing video ${i + 1}/${totalFiles}: ${file.name}...`, false);
-                         lastProgressRatio = 0; await ffmpeg.run(...ffmpegArgs); ffmpegRunSuccess = true;
-                         setProgress(`Saving frames for video ${i + 1}/${totalFiles}...`, ((i + 0.95) / totalFiles) * 100); await new Promise(resolve => setTimeout(resolve, 50));
-                         const outputFiles = ffmpeg.FS('readdir', tempOutputDir); const frameFiles = outputFiles.filter(name => name.startsWith('frame_') && name.endsWith(`.${outputFormat}`)); currentFileFrames = frameFiles.length; totalFramesExtractedOverall += currentFileFrames; console.log(`Found ${currentFileFrames} frames for ${file.name}. Saving...`);
-                         for (const tempFrameName of frameFiles) {
-                             const frameNumMatch = tempFrameName.match(/frame_(\d+)\.jpg/); if (!frameNumMatch) continue; const frameNum = parseInt(frameNumMatch[1], 10); const timestampSeconds = (frameNum - 1) * interval; const formattedTime = formatTimestamp(timestampSeconds); const finalFilename = `${baseOutputName}__${formattedTime}.${outputFormat}`; const frameData = ffmpeg.FS('readFile', `${tempOutputDir}/${tempFrameName}`); let writeSuccess = false;
-                             for(let attempt = 0; attempt < 2; attempt++) { try { const fileHandle = await outputDirectoryHandle.getFileHandle(finalFilename, { create: true }); const writable = await fileHandle.createWritable(); await writable.write(frameData); await writable.close(); writeSuccess = true; break; } catch (writeError) { console.error(`Write error ${finalFilename} (attempt ${attempt+1}):`, writeError); if (attempt === 0) { await new Promise(resolve => setTimeout(resolve, 100)); } else { setStatus(`Error writing ${finalFilename}. Check permissions/disk space.`, true); await new Promise(resolve => setTimeout(resolve, 1000)); } } }
-                         } filesProcessedSuccessfully++; console.log(`Finished ${file.name}. Saved ${currentFileFrames} frames.`);
-                    } catch (runError) { console.error(`Error processing ${file.name}:`, runError); setStatus(`Error on ${file.name}: ${runError.message || 'Unknown FFmpeg error'}. Skipping.`, true); filesSkipped++; await new Promise(resolve => setTimeout(resolve, 2500)); }
-                    finally { console.log(`Cleaning up FS for ${file.name}...`); try { if (ffmpeg.FS('readdir', '/').includes(tempInputFilename)) { ffmpeg.FS('unlink', tempInputFilename); } } catch(e) { console.warn("Could not unlink input", tempInputFilename, e)} try { const filesInOutDir = ffmpeg.FS('readdir', tempOutputDir); for (const f of filesInOutDir) { if (f !== '.' && f !== '..') { try { ffmpeg.FS('unlink', `${tempOutputDir}/${f}`); } catch(e) { console.warn("Could not unlink temp frame", f, e)} } } } catch (e) { console.warn("Could not clean temp output dir", tempOutputDir, e)} }
+
+            // --- Input Validation ---
+            const interval = parseFloat(intervalInput.value);
+            if (isNaN(interval) || interval <= 0) { setStatus("Invalid frame interval.", true); intervalInput.focus(); return; }
+            if (droppedFiles.length === 0) { setStatus("No video files selected.", true); return; }
+            if (!outputDirectoryHandle) { setStatus("Output folder not selected.", true); selectFolderBtn.focus(); return; }
+
+            const resolutionMode = document.querySelector('input[name="resolution"]:checked')?.value;
+            if (resolutionMode === 'custom') {
+                const customW = parseInt(customWidthInput.value, 10);
+                const customH = parseInt(customHeightInput.value, 10);
+                if (!(customW > 0 && customH > 0)) {
+                    setStatus("Invalid custom dimensions.", true);
+                    customWidthInput.focus(); return;
                 }
+            }
+
+            if (!ffmpegLoaded || !ffmpeg) {
+                setStatus("FFmpeg is not ready or failed to load properly. Cannot start extraction. Please refresh.", true);
+                console.error("Attempted to start extraction but ffmpeg is not valid:", ffmpeg);
+                return;
+            }
+
+            // --- Warning for High Frame Count ---
+            updateFrameEstimate(); // Ensure estimate is current
+            if (totalEstimatedFrames > 10000) { // Adjust threshold as needed
+                const proceed = confirm(
+                    `⚠️ WARNING ⚠️\n\n` +
+                    `Estimated ~${totalEstimatedFrames.toLocaleString()} frames.\n` +
+                    `This may take a long time, use significant disk space (~${(totalEstimatedFrames * 0.2).toFixed(1)} MB - ${ (totalEstimatedFrames * 1).toFixed(1)} MB assuming 200KB-1MB/frame), and could potentially slow down or crash your browser.\n\n` +
+                    `Continue anyway?`
+                 );
+                 if (!proceed) {
+                     setStatus("Extraction cancelled by user due to high frame count.", false);
+                     return;
+                 }
+            }
+
+            // --- Initialize Processing State ---
+            isProcessing = true;
+            disableControls();
+            setStatus("Starting extraction process...", false);
+            progressBar.style.width = '0%';
+            progressBar.classList.remove('bg-green-500', 'bg-red-500');
+            progressBar.classList.add('bg-blue-500');
+            etaText.textContent = '';
+            processStartTime = Date.now(); // Use the global start time
+            totalFiles = droppedFiles.length;
+            currentFileIndex = 0; // Reset current file index
+            let totalFramesExtractedOverall = 0;
+            let filesProcessedSuccessfully = 0;
+            let filesSkipped = 0;
+
+            // --- Constants for FFmpeg ---
+            const fpsFilterValue = 1 / interval; // Calculate FPS value
+            const outputFormat = 'jpg';
+            const qualityArg = ['-q:v', '2']; // Good quality baseline for JPG
+            const tempOutputDir = `/output_${Date.now()}`; // Unique temp dir in MEMFS
+
+            try {
+                // --- Create Temp Directory in MEMFS ---
+                // Attempt to remove if exists from previous run (unlikely but possible)
+                try { ffmpeg.FS('rmdir', tempOutputDir); } catch (e) { /* ignore if not found */ }
+                try {
+                    ffmpeg.FS('mkdir', tempOutputDir);
+                    console.log(`Created MEMFS directory: ${tempOutputDir}`);
+                } catch (e) {
+                    console.error("FATAL: Failed to create temporary output directory in MEMFS:", e);
+                    throw new Error(`Failed to create MEMFS directory: ${e.message}`);
+                }
+
+                // --- Process Each File ---
+                for (let i = 0; i < droppedFiles.length; i++) {
+                    currentFileIndex = i;
+                    const file = droppedFiles[i];
+                    const fileIndexString = String(i + 1).padStart(String(totalFiles).length, '0'); // e.g., 01, 02...
+                    const baseOutputName = `video_${fileIndexString}`; // Base name for output frames from this video
+                    const tempInputFilename = `input_${i}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`; // Unique & safe input filename
+                    const metadata = fileMetadata.get(file);
+
+                    // --- Check Metadata ---
+                    if (!metadata || metadata.error || typeof metadata.duration !== 'number' || metadata.duration <= 0) {
+                        console.warn(`Skipping ${file.name} (index ${i}): Invalid or missing metadata (duration=${metadata?.duration}, error=${metadata?.error}).`);
+                        setStatus(`Skipping ${i + 1}/${totalFiles}: ${file.name} (metadata issue)`, true);
+                        filesSkipped++;
+                        await new Promise(resolve => setTimeout(resolve, 1500)); // Pause briefly to show status
+                        continue; // Move to next file
+                    }
+
+                    // --- Update Status ---
+                    setProgress(`Preparing video ${i + 1}/${totalFiles}: ${file.name}`, (i / totalFiles) * 100);
+                    await new Promise(resolve => setTimeout(resolve, 50)); // Small delay for UI update
+
+                    let currentFileFrames = 0;
+                    let ffmpegRunSuccess = false;
+
+                    try {
+                        // --- Write Input File to MEMFS ---
+                        console.log(`Writing ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB) to MEMFS as ${tempInputFilename}`);
+                        const fileData = await fetchFile(file); // Use our fetchFile
+                        ffmpeg.FS('writeFile', tempInputFilename, fileData);
+                        console.log(`Finished writing ${tempInputFilename} to MEMFS.`);
+
+                        // --- Prepare FFmpeg Arguments ---
+                        const resolutionArgs = getResolutionArgs(metadata); // Returns array like ['-vf', 'scale=W:H'] or []
+                        const outputPattern = `${tempOutputDir}/frame_%07d.${outputFormat}`; // Consistent frame numbering
+                        // Combine filters: fps first, then scale (if needed)
+                        const vfArgs = resolutionArgs.length > 0
+                             ? ['-vf', `${fpsFilterValue},${resolutionArgs[1]}`] // Combine fps and scale filters
+                             : ['-vf', `fps=${fpsFilterValue}`]; // Only fps filter
+
+                        const ffmpegArgs = [
+                             '-hide_banner',       // Reduce log noise
+                             '-i', tempInputFilename,
+                             ...vfArgs,             // Combined video filters
+                             ...qualityArg,         // Output quality
+                             '-vsync', 'vfr',       // Variable frame rate output (important for fps filter)
+                             outputPattern          // Output pattern
+                        ];
+
+                        console.log(`Running FFmpeg for ${file.name}: ffmpeg ${ffmpegArgs.join(' ')}`);
+                        setStatus(`Processing video ${i + 1}/${totalFiles}: ${file.name}...`, false);
+
+                        // --- Execute FFmpeg ---
+                        await ffmpeg.run(...ffmpegArgs);
+                        ffmpegRunSuccess = true;
+                        console.log(`FFmpeg run completed successfully for ${file.name}.`);
+
+                        // --- Process Output Frames ---
+                        setProgress(`Saving frames for video ${i + 1}/${totalFiles}...`, ((i + 0.95) / totalFiles) * 100); // Show near completion for this file
+                        await new Promise(resolve => setTimeout(resolve, 50)); // UI update pause
+
+                        const outputFiles = ffmpeg.FS('readdir', tempOutputDir);
+                        const frameFiles = outputFiles.filter(name => name.startsWith('frame_') && name.endsWith(`.${outputFormat}`));
+                        currentFileFrames = frameFiles.length;
+                        totalFramesExtractedOverall += currentFileFrames;
+                        console.log(`Found ${currentFileFrames} frames in MEMFS for ${file.name}. Saving to disk...`);
+
+                        if (currentFileFrames === 0) {
+                             console.warn(`No frames were generated for ${file.name}. Check FFmpeg logs and video format.`);
+                             setStatus(`Warning: No frames generated for ${file.name}. Skipping save.`, true);
+                             await new Promise(resolve => setTimeout(resolve, 1500));
+                        } else {
+                            // --- Save Frames to Disk ---
+                            for (const tempFrameName of frameFiles) {
+                                const frameNumMatch = tempFrameName.match(/frame_(\d+)\.jpg/);
+                                if (!frameNumMatch) {
+                                    console.warn(`Could not parse frame number from ${tempFrameName}`);
+                                    continue;
+                                }
+                                const frameNum = parseInt(frameNumMatch[1], 10);
+                                // Calculate timestamp based on frame number and interval
+                                const timestampSeconds = (frameNum - 1) * interval;
+                                const formattedTime = formatTimestamp(timestampSeconds);
+                                const finalFilename = `${baseOutputName}__${formattedTime}.${outputFormat}`;
+
+                                // Read frame data from MEMFS
+                                const frameData = ffmpeg.FS('readFile', `${tempOutputDir}/${tempFrameName}`);
+
+                                // Write frame data to the chosen output directory
+                                let writeSuccess = false;
+                                for(let attempt = 0; attempt < 2; attempt++) { // Retry once on failure
+                                    try {
+                                        const fileHandle = await outputDirectoryHandle.getFileHandle(finalFilename, { create: true });
+                                        const writable = await fileHandle.createWritable();
+                                        await writable.write(frameData);
+                                        await writable.close();
+                                        writeSuccess = true;
+                                        break; // Success, exit retry loop
+                                    } catch (writeError) {
+                                        console.error(`Write error for ${finalFilename} (attempt ${attempt+1}/${2}):`, writeError);
+                                        if (attempt === 0) {
+                                            // Optional: Short delay before retry
+                                            await new Promise(resolve => setTimeout(resolve, 100));
+                                        } else {
+                                            // Final failure
+                                            setStatus(`Error writing ${finalFilename}. Check permissions/disk space. Skipping frame.`, true);
+                                            // Consider how to handle this - maybe stop entirely? For now, just warn and continue.
+                                            await new Promise(resolve => setTimeout(resolve, 1000)); // Show error briefly
+                                        }
+                                    }
+                                }
+                                // Optionally log success/failure per frame
+                                // console.log(`Frame ${tempFrameName} -> ${finalFilename} ${writeSuccess ? 'saved' : 'failed'}`);
+                            }
+                         }
+                        filesProcessedSuccessfully++;
+                        console.log(`Finished processing ${file.name}. Saved ${currentFileFrames} frames.`);
+
+                    } catch (runError) {
+                        console.error(`Error processing ${file.name} (index ${i}):`, runError);
+                        setStatus(`Error on ${file.name}: ${runError.message || 'Unknown FFmpeg error'}. Skipping.`, true);
+                        filesSkipped++;
+                        await new Promise(resolve => setTimeout(resolve, 2500)); // Show error longer
+                    } finally {
+                        // --- Cleanup MEMFS for this file ---
+                        console.log(`Cleaning up MEMFS for ${file.name}...`);
+                        try {
+                             // Delete input file
+                             if (ffmpeg.FS('readdir', '/').includes(tempInputFilename)) {
+                                 ffmpeg.FS('unlink', tempInputFilename);
+                                 console.log(`Deleted input ${tempInputFilename}`);
+                             }
+                             // Delete output frames from temp dir
+                             const filesInOutDir = ffmpeg.FS('readdir', tempOutputDir);
+                             for (const f of filesInOutDir) {
+                                 if (f !== '.' && f !== '..') { // Avoid deleting '.' and '..'
+                                     try {
+                                         ffmpeg.FS('unlink', `${tempOutputDir}/${f}`);
+                                     } catch (unlinkError) {
+                                         console.warn(`Could not unlink temp frame ${f}:`, unlinkError);
+                                     }
+                                 }
+                             }
+                             console.log(`Cleaned output dir ${tempOutputDir}`);
+                        } catch (cleanupError) {
+                             console.warn(`Error during MEMFS cleanup for ${file.name}:`, cleanupError);
+                        }
+                    }
+                } // End of file loop
+
+                // --- Final Cleanup ---
+                try { ffmpeg.FS('rmdir', tempOutputDir); console.log(`Removed MEMFS directory: ${tempOutputDir}`);}
+                catch (e) { console.warn(`Could not remove final temp dir ${tempOutputDir}:`, e); }
+
+
+                // --- Report Final Status ---
                 const durationSeconds = (Date.now() - processStartTime) / 1000;
-                if (filesProcessedSuccessfully > 0) { let successMsg = `✅ Success! Extracted ${totalFramesExtractedOverall.toLocaleString()} frames from ${filesProcessedSuccessfully} video(s)`; if (filesSkipped > 0) { successMsg += ` (${filesSkipped} skipped due to errors/metadata issues)`; } successMsg += ` in ${formatSeconds(durationSeconds)}.`; setStatus(successMsg, false); progressBar.style.width = '100%'; progressBar.classList.remove('bg-blue-500'); progressBar.classList.add('bg-green-500'); playSound(); console.log(`Extraction complete. Total frames: ${totalFramesExtractedOverall}. Files processed: ${filesProcessedSuccessfully}. Skipped: ${filesSkipped}. Duration: ${durationSeconds.toFixed(1)}s.`); }
-                else if (filesSkipped > 0 && droppedFiles.length === filesSkipped) { setStatus(`❌ Processing finished. All ${filesSkipped} file(s) were skipped due to errors or metadata issues. Check console.`, true); progressBar.style.width = '100%'; progressBar.classList.remove('bg-blue-500'); progressBar.classList.add('bg-red-500'); console.error(`Extraction failed, all files skipped.`); }
-                else { setStatus(`❌ Processing finished with errors. No frames extracted. Check console.`, true); progressBar.style.width = '100%'; progressBar.classList.remove('bg-blue-500'); progressBar.classList.add('bg-red-500'); }
-            } catch (error) { console.error("Critical error during extraction process:", error); setStatus(`❌ Critical Error: ${error.message || 'Unknown error'}. Check console.`, true); progressBar.classList.add('bg-red-500'); progressBar.classList.remove('bg-blue-500', 'bg-green-500'); }
-            finally { isProcessing = false; enableControls(); checkStartButtonState(); setTimeout(() => { if (!isProcessing) { progressBar.classList.remove('bg-red-500', 'bg-green-500'); progressBar.classList.add('bg-blue-500'); } }, 5000); }
+                if (filesProcessedSuccessfully > 0) {
+                    let successMsg = `✅ Success! Extracted ${totalFramesExtractedOverall.toLocaleString()} frames from ${filesProcessedSuccessfully} video(s)`;
+                    if (filesSkipped > 0) {
+                        successMsg += ` (${filesSkipped} skipped due to errors/metadata issues)`;
+                    }
+                    successMsg += ` in ${formatSeconds(durationSeconds)}.`;
+                    setStatus(successMsg, false);
+                    progressBar.style.width = '100%';
+                    progressBar.classList.remove('bg-blue-500');
+                    progressBar.classList.add('bg-green-500');
+                    playSound(); // Play success sound
+                    console.log(`Extraction complete. Total frames: ${totalFramesExtractedOverall}. Files processed: ${filesProcessedSuccessfully}. Skipped: ${filesSkipped}. Duration: ${durationSeconds.toFixed(1)}s.`);
+                } else if (filesSkipped > 0 && droppedFiles.length === filesSkipped) {
+                    // All files were skipped
+                    setStatus(`❌ Processing finished. All ${filesSkipped} file(s) were skipped due to errors or metadata issues. Check console.`, true);
+                    progressBar.style.width = '100%';
+                    progressBar.classList.remove('bg-blue-500');
+                    progressBar.classList.add('bg-red-500');
+                    console.error(`Extraction failed, all ${filesSkipped} files were skipped.`);
+                } else {
+                    // Some other failure, possibly the initial mkdir failed or loop error
+                    setStatus(`❌ Processing finished with errors. No frames extracted or saved successfully. Check console.`, true);
+                    progressBar.style.width = '100%';
+                    progressBar.classList.remove('bg-blue-500');
+                    progressBar.classList.add('bg-red-500');
+                     console.error(`Extraction failed or completed with critical errors. Processed: ${filesProcessedSuccessfully}, Skipped: ${filesSkipped}`);
+                }
+
+            } catch (error) { // Catch errors from the main try block (e.g., mkdir failure)
+                console.error("Critical error during the extraction process:", error);
+                setStatus(`❌ Critical Error: ${error.message || 'Unknown error during processing'}. Check console.`, true);
+                progressBar.classList.add('bg-red-500');
+                progressBar.classList.remove('bg-blue-500', 'bg-green-500');
+            } finally {
+                // --- Re-enable UI ---
+                isProcessing = false;
+                enableControls();
+                checkStartButtonState(); // Update button state again
+                // Optional: Reset progress bar color after a delay if it ended on red/green
+                setTimeout(() => {
+                     if (!isProcessing && progressBar) { // Check if still not processing and element exists
+                        progressBar.classList.remove('bg-red-500', 'bg-green-500');
+                        progressBar.classList.add('bg-blue-500');
+                        // Maybe reset progress bar width too?
+                        // progressBar.style.width = '0%';
+                        // etaText.textContent = ''; // Clear ETA
+                    }
+                }, 5000); // 5 second delay
+            }
         }
 
+
         // --- Sound ---
-        // (Keep function playSound the same)
         function playSound() {
-             successSound.currentTime = 0; successSound.play().catch(e => console.warn("Could not play success sound:", e));
+             if (!successSound) return;
+             successSound.currentTime = 0; // Rewind first
+             successSound.play().catch(e => console.warn("Could not play success sound:", e));
         }
 
         // --- PWA Service Worker Registration (Simplified) ---
-        // (Keep service worker logic the same)
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                const isDevEnvironment = window.location.hostname.includes('github.dev') || window.location.hostname.includes('localhost') || window.location.hostname.startsWith('127.0.0');
-                if (isDevEnvironment) { console.log('Development environment detected. Skipping ServiceWorker registration.'); return; }
-                try { navigator.serviceWorker.register('service-worker.js').then(reg => console.log('SW reg success:', reg.scope)).catch(err => console.log('SW reg failed:', err)); }
-                catch (e) { console.log('SW feature unavailable:', e); }
+                // More robust check for development environments
+                const isDev = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname) ||
+                              window.location.protocol === 'file:' ||
+                              window.location.hostname.endsWith('.local') || // Common local dev pattern
+                              window.location.hostname.includes('github.dev') ||
+                              window.location.hostname.includes('codesandbox.io') || // Add other online IDEs if needed
+                              window.location.hostname.includes('stackblitz.io');
+
+                if (isDev) {
+                    console.log('Development environment detected. Skipping ServiceWorker registration.');
+                    return;
+                }
+
+                // Assuming service-worker.js exists at the root
+                const swPath = 'service-worker.js';
+                console.log(`Production environment detected. Attempting to register ServiceWorker: ${swPath}`);
+                navigator.serviceWorker.register(swPath)
+                    .then(registration => {
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                    })
+                    .catch(error => {
+                        console.log('ServiceWorker registration failed: ', error);
+                    });
             });
-        } else { console.log('SW not supported.'); }
+        } else {
+            console.log('ServiceWorker API not supported in this browser.');
+        }
 
     </script>
 
