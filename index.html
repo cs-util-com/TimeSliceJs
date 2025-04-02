@@ -2,46 +2,30 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>FFmpeg.wasm Single-Threaded Example</title>
+  <title>FFmpeg.wasm Single-Threaded Test</title>
 </head>
 <body>
-  <input type="file" id="uploader" accept="video/*">
-  <button id="convertBtn">Convert to MP4</button>
-  <video id="outputVideo" controls></video>
+  <p id="status">Loading FFmpeg...</p>
 
   <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.10.0/dist/ffmpeg.min.js"></script>
   <script>
-    const { createFFmpeg, fetchFile } = FFmpeg;
-    const ffmpeg = createFFmpeg({
-      log: true,
-      corePath: './node_modules/@ffmpeg/dist/umd/ffmpeg-core.js',
-      mainName: 'main',
-    });
-
-    document.getElementById('convertBtn').addEventListener('click', async () => {
-      if (!ffmpeg.isLoaded()) {
+    (async () => {
+      const { createFFmpeg } = FFmpeg;
+      const ffmpeg = createFFmpeg({
+        log: true,
+        corePath: './node_modules/@ffmpeg/core/dist/ffmpeg-core.js',
+        mainName: 'main',
+      });
+      
+      try {
         await ffmpeg.load();
+        document.getElementById('status').textContent = "FFmpeg loaded successfully!";
+        console.log("FFmpeg loaded successfully!");
+      } catch (error) {
+        document.getElementById('status').textContent = "Error loading FFmpeg!";
+        console.error("Error loading FFmpeg:", error);
       }
-
-      const uploader = document.getElementById('uploader');
-      const file = uploader.files[0];
-      if (!file) {
-        alert('Please select a video file first.');
-        return;
-      }
-
-      const fileName = file.name;
-      const outputFileName = 'output.mp4';
-
-      ffmpeg.FS('writeFile', fileName, await fetchFile(file));
-      await ffmpeg.run('-i', fileName, outputFileName);
-      const data = ffmpeg.FS('readFile', outputFileName);
-
-      const video = document.getElementById('outputVideo');
-      video.src = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-      video.load();
-      video.play();
-    });
+    })();
   </script>
 </body>
 </html>
