@@ -47,7 +47,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   // Skip non-GET requests and specific problematic requests
   if (event.request.method !== 'GET' || 
-      event.request.url.includes('ffmpeg') ||
+      event.request.url.includes('@ffmpeg/ffmpeg') || // Skip ffmpeg libraries
       event.request.url.includes('jsdelivr.net') ||
       event.request.url.includes('unpkg.com') ||
       event.request.url.includes('skypack.dev') ||

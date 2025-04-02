@@ -145,30 +145,36 @@
 
     // Minimal imports from ffmpeg.wasm (CDN for demonstration).
     let ffmpeg;
-    let FFmpeg;
 
     async function loadFFmpeg() {
       try {
-        if (!FFmpeg) {
-          // Try to load from multiple CDN sources
-          try {
-            const { createFFmpeg, fetchFile } = await import('https://unpkg.com/@ffmpeg/ffmpeg@0.12.4/dist/ffmpeg.min.js');
-            FFmpeg = createFFmpeg;
-            window.fetchFile = fetchFile;
-          } catch (err) {
-            console.warn('Primary CDN failed, trying alternative:', err);
-            const { createFFmpeg, fetchFile } = await import('https://cdn.skypack.dev/@ffmpeg/ffmpeg@0.12.4');
-            FFmpeg = createFFmpeg;
-            window.fetchFile = fetchFile;
-          }
-        }
         if (!ffmpeg) {
-          ffmpeg = FFmpeg({ log: true });
-          await ffmpeg.load();
+          // Try primary CDN
+          try {
+            // https://www.jsdelivr.com/package/npm/@ffmpeg/ffmpeg
+            const { createFFmpeg, fetchFile } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/umd/ffmpeg.min.js');
+            window.fetchFile = fetchFile;
+            ffmpeg = createFFmpeg({ log: true });
+            await ffmpeg.load();
+            console.log("FFmpeg loaded from primary CDN");
+          } catch (err) {
+            console.warn('Primary CDN failed, trying Skypack:', err);
+            try {
+              // https://www.skypack.dev/view/@types__ffmpeg-installer/ffmpeg 
+              const { createFFmpeg, fetchFile } = await import('https://cdn.skypack.dev/@types/ffmpeg-installer__ffmpeg');
+              window.fetchFile = fetchFile;
+              ffmpeg = createFFmpeg({ log: true });
+              await ffmpeg.load();
+              console.log("FFmpeg loaded from Skypack fallback");
+            } catch (secondErr) {
+              console.error('All CDNs failed:', secondErr);
+              throw new Error('Could not load FFmpeg from any source');
+            }
+          }
         }
       } catch (err) {
         console.error('Failed to load FFmpeg:', err);
-        alert('Failed to load video processing library. Please check your internet connection or try a different browser.');
+        alert('Failed to load video processing library.');
         throw err;
       }
     }
