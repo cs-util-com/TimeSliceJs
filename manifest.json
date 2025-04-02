@@ -1,16 +1,15 @@
 {
   "name": "Video Frame Extractor",
   "short_name": "Frame Extractor",
-  "description": "Extract frames from videos at specified intervals",
-  "start_url": "./",
-  "scope": ".",
+  "description": "Standalone PWA for extracting frames from video at specified intervals",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#000000",
   "icons": [
     {
-      "src": "./icon.svg",
-      "sizes": "192x192",
+      "src": "icon.svg",
+      "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any"
     }

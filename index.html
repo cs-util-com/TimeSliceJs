@@ -9,12 +9,9 @@
 
   <!-- Tailwind CSS via CDN (for production, embed or self-host for full offline) -->
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3/dist/tailwind.min.css" rel="stylesheet" />
-
-  <!-- Updated manifest file reference with relative path -->
-  <link rel="manifest" crossorigin="use-credentials" href="./manifest.json" />
   
-  <!-- Add favicon -->
-  <link rel="icon" href="./icon.svg">
+  <!-- Inline SVG icon as data URI -->
+  <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48ZyBmaWxsPSIjMDAwIj48cGF0aCBkPSJNNDczLjEyNiAxNjMuMzA3SDM4LjI3NEMxNy4xNyAxNjMuMzA3IDAgMTgwLjQ3NiAwIDIwMS41ODFWMzEwLjQyQzAgMzMxLjUyNCAxNy4xNyAzNDguNjk0IDM4LjI3NCAzNDguNjk0SDQ3My4xMjZDNDk0LjIzIDM0OC42OTQgNTEyIDMzMS41MjQgNTEyIDMxMC40MTlWMjAxLjU4MUM1MTIgMTgwLjQ3NiA0OTQuMjMgMTYzLjMwNyA0NzMuMTI2IDE2My4zMDd6TTQ0MC4xNTggMjU2QzQ0MC4xNTggMjczLjQ5NyA0MjYuMDUzIDI4Ny42MDIgNDA4LjU1NiAyODcuNjAyQzM5MS4wNTkgMjg3LjYwMiAzNzYuOTU0IDI3My40OTcgMzc2Ljk1NCAyNTZDMzc2Ljk1NCAyMzguNTAzIDM5MS4wNTkgMjI0LjM5OCA0MDguNTU2IDIyNC4zOThDNDI2LjA1MyAyMjQuMzk4IDQ0MC4xNTggMjM4LjUwMyA0NDAuMTU4IDI1NnoiLz48L2c+PC9zdmc+" type="image/svg+xml">
 
   <style>
     /* Minimal dark mode background */
@@ -26,6 +23,122 @@
       font-family: sans-serif;
     }
   </style>
+
+  <script>
+    // Inline manifest creation
+    const manifestContent = {
+      "name": "Video Frame Extractor",
+      "short_name": "Frame Extractor",
+      "description": "Standalone PWA for extracting frames from video at specified intervals",
+      "start_url": "./index.html",
+      "display": "standalone",
+      "background_color": "#0f172a",
+      "theme_color": "#000000",
+      "icons": [
+        {
+          "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48ZyBmaWxsPSIjMDAwIj48cGF0aCBkPSJNNDczLjEyNiAxNjMuMzA3SDM4LjI3NEMxNy4xNyAxNjMuMzA3IDAgMTgwLjQ3NiAwIDIwMS41ODFWMzEwLjQyQzAgMzMxLjUyNCAxNy4xNyAzNDguNjk0IDM4LjI3NCAzNDguNjk0SDQ3My4xMjZDNDk0LjIzIDM0OC42OTQgNTEyIDMzMS41MjQgNTEyIDMxMC40MTlWMjAxLjU4MUM1MTIgMTgwLjQ3NiA0OTQuMjMgMTYzLjMwNyA0NzMuMTI2IDE2My4zMDd6TTQ0MC4xNTggMjU2QzQ0MC4xNTggMjczLjQ5NyA0MjYuMDUzIDI4Ny42MDIgNDA4LjU1NiAyODcuNjAyQzM5MS4wNTkgMjg3LjYwMiAzNzYuOTU0IDI3My40OTcgMzc2Ljk1NCAyNTZDMzc2Ljk1NCAyMzguNTAzIDM5MS4wNTkgMjI0LjM5OCA0MDguNTU2IDIyNC4zOThDNDI2LjA1MyAyMjQuMzk4IDQ0MC4xNTggMjM4LjUwMyA0NDAuMTU4IDI1NnoiLz48L2c+PC9zdmc+",
+          "sizes": "512x512",
+          "type": "image/svg+xml",
+          "purpose": "any"
+        }
+      ]
+    };
+    
+    // Create and link manifest
+    const manifestBlob = new Blob([JSON.stringify(manifestContent)], {type: 'application/json'});
+    const manifestURL = URL.createObjectURL(manifestBlob);
+    
+    // Create service worker content
+    const swContent = `
+      // Inline Service Worker for Video Frame Extractor PWA
+      const CACHE_NAME = 'frame-extractor-v1';
+      
+      // Install event - setup the cache
+      self.addEventListener('install', event => {
+        event.waitUntil(
+          caches.open(CACHE_NAME)
+            .then(cache => {
+              return cache.add('./');
+            })
+            .then(() => self.skipWaiting())
+        );
+      });
+      
+      // Activate event - clean up old caches
+      self.addEventListener('activate', event => {
+        event.waitUntil(
+          caches.keys()
+            .then(cacheNames => {
+              return Promise.all(
+                cacheNames.filter(cacheName => {
+                  return cacheName !== CACHE_NAME;
+                }).map(cacheName => {
+                  return caches.delete(cacheName);
+                })
+              );
+            })
+            .then(() => self.clients.claim())
+        );
+      });
+      
+      // Fetch event - for offline support
+      self.addEventListener('fetch', event => {
+        // Skip non-GET requests and CDN requests
+        if (event.request.method !== 'GET' || 
+            event.request.url.includes('@ffmpeg/ffmpeg') || 
+            event.request.url.includes('jsdelivr.net') ||
+            event.request.url.includes('unpkg.com') ||
+            event.request.url.includes('skypack.dev')) {
+          return;
+        }
+      
+        event.respondWith(
+          caches.match(event.request)
+            .then(response => {
+              if (response) {
+                return response;
+              }
+      
+              return fetch(event.request.clone())
+                .then(response => {
+                  if (!response || response.status !== 200 || response.type !== 'basic') {
+                    return response;
+                  }
+      
+                  const responseToCache = response.clone();
+                  caches.open(CACHE_NAME)
+                    .then(cache => {
+                      cache.put(event.request, responseToCache);
+                    });
+      
+                  return response;
+                });
+            })
+        );
+      });
+    `;
+    
+    // Create and register service worker
+    const swBlob = new Blob([swContent], {type: 'application/javascript'});
+    const swURL = URL.createObjectURL(swBlob);
+    
+    // Create a synthetic manifest link element
+    document.addEventListener('DOMContentLoaded', () => {
+      // Add manifest link
+      const manifestLink = document.createElement('link');
+      manifestLink.rel = 'manifest';
+      manifestLink.href = manifestURL;
+      document.head.appendChild(manifestLink);
+      
+      // Register the service worker
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker
+          .register(swURL)
+          .then(() => console.log('Service Worker registered from Blob URL'))
+          .catch(err => console.error('SW registration failed:', err));
+      }
+    });
+  </script>
 </head>
 <body class="flex flex-col items-center justify-center min-h-screen p-4">
 
@@ -131,18 +244,6 @@
 
   <!-- Main Script -->
   <script>
-    // Service Worker registration using a proper relative path
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker
-          .register('./sw.js')
-          .then(() => console.log('Service Worker registered.'))
-          .catch(err => console.error('SW registration failed:', err));
-      });
-    }
-
-    // For actual offline usage of Tailwind & ffmpeg.wasm, embed or cache them via the SW.
-
     // Minimal imports from ffmpeg.wasm (CDN for demonstration).
     let ffmpeg;
 
@@ -421,10 +522,6 @@ Click 'Extract Frames' to confirm deleting them, or pick another folder.`;
       updateProgress('Complete!', 100);
       resultMessage.textContent = 'All frames successfully extracted!';
       resultMessage.classList.remove('hidden');
-
-      // Optional audio notification
-      // const audio = new Audio('data:audio/wav;base64,...');
-      // audio.play().catch(console.warn);
 
       console.log('Extraction finished.');
     });
