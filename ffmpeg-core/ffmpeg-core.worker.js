@@ -1,4 +1,5 @@
-// Dummy ffmpeg-core.worker.js for single-threaded mode
-self.onmessage = function(event) {
-    // No operation performed; this worker is a placeholder.
-  };
+// ffmpeg-core.worker.js
+// Dummy worker for FFmpeg.wasm in single-threaded mode.
+self.onmessage = function() {
+  // No operation needed.
+};
