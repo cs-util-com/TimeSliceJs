@@ -12,9 +12,10 @@
   <script>
     (async () => {
       const { createFFmpeg } = FFmpeg;
+      // Set corePath to your self-hosted FFmpeg core folder.
       const ffmpeg = createFFmpeg({
         log: true,
-        corePath: './node_modules/@ffmpeg/dist/umd/ffmpeg-core.js', 
+        corePath: './ffmpeg-core/ffmpeg-core.js', // Adjust path as needed.
         mainName: 'main' // Use "main" for single-threaded support.
       });
 
