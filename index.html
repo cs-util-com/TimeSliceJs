@@ -193,8 +193,13 @@
                          console.debug(`[ffmpeg ${type}] ${message}`);
                      },
                     progress: handleProgress,
-                    // Added: Disable threading to avoid SharedArrayBuffer requirement
-                    corePath: 'https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js'
+                    // CORS configuration - critical for accessing the worker across domains
+                    corePath: 'https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js',
+                    // Tell FFmpeg to download the worker instead of trying to create it directly
+                    // This avoids the CORS security error
+                    workerLoadStrategy: 'download',
+                    // Prevent caching which can cause additional CORS issues
+                    cache: false
                 });
 
                 console.log("Calling ffmpeg.load()...");
@@ -683,17 +688,26 @@
         }
 
         // --- PWA Service Worker Registration (Simplified) ---
-        // The blob URL approach failed, so let's use a more direct approach
+        // Updated to skip service worker in development environment
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                // Check if we're in an environment where service workers can be registered
+                // Check if we're in a GitHub Codespace or similar dev environment
+                // In these environments, don't try to register the service worker
+                const isDevEnvironment = window.location.hostname.includes('github.dev') || 
+                                        window.location.hostname.includes('localhost');
+                
+                if (isDevEnvironment) {
+                    console.log('Development environment detected. Skipping ServiceWorker registration.');
+                    return;
+                }
+                
+                // Only register service worker in production environment
                 try {
                     navigator.serviceWorker.register('/service-worker.js')
                         .then(registration => { 
                             console.log('ServiceWorker registration successful: ', registration.scope); 
                         })
                         .catch(error => { 
-                            // Don't treat this as fatal - the app can still work without service worker
                             console.log('ServiceWorker registration failed (app will still work): ', error); 
                         });
                 } catch (e) {
