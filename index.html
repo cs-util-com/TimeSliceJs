@@ -12,26 +12,21 @@
   <script>
     (async () => {
       const { createFFmpeg } = FFmpeg;
-      // Create a dummy worker script as a data URL.
-      const dummyWorker =
-        'data:application/javascript;base64,' +
-        btoa('console.log("Dummy worker loaded.");');
-
       const ffmpeg = createFFmpeg({
         log: true,
-        // Use your self-hosted core files.
+        // Use your self-hosted core file.
         corePath: './ffmpeg-core/ffmpeg-core.js',
-        // Specify the single-threaded entry point.
+        // "main" tells FFmpeg to run in single-threaded mode.
         mainName: 'main',
-        // Override the worker path with our dummy worker.
-        workerPath: dummyWorker,
-        // Optionally, override file lookup for the core JS and WASM files.
         locateFile: (file) => {
           if (file.endsWith('ffmpeg-core.js')) {
             return './ffmpeg-core/ffmpeg-core.js';
           }
           if (file.endsWith('ffmpeg-core.wasm')) {
             return './ffmpeg-core/ffmpeg-core.wasm';
+          }
+          if (file.endsWith('ffmpeg-core.worker.js')) {
+            return './ffmpeg-core/ffmpeg-core.worker.js';
           }
           return file;
         }
