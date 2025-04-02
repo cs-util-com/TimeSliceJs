@@ -14,16 +14,25 @@
       const { createFFmpeg } = FFmpeg;
       const ffmpeg = createFFmpeg({
         log: true,
-        mainName: 'main',  // Use "main" for single-threaded support.
+        // Force use of the self-hosted single-threaded core file.
+        corePath: './ffmpeg-core/ffmpeg-core.js',
+        // "main" signals single-threaded mode.
+        mainName: 'main',
+        // Override file lookup to load our local copies and supply a dummy worker.
         locateFile: (file) => {
-          // When the library asks for the worker file, return a dummy valid file.
-          if (file.endsWith('ffmpeg-core.worker.js')) {
-            // A minimal valid worker script that does nothing.
+          console.log("locateFile called for:", file);
+          if (file.indexOf('ffmpeg-core.js') !== -1) {
+            return './ffmpeg-core/ffmpeg-core.js';
+          }
+          if (file.indexOf('ffmpeg-core.wasm') !== -1) {
+            return './ffmpeg-core/ffmpeg-core.wasm';
+          }
+          if (file.indexOf('ffmpeg-core.worker.js') !== -1) {
+            // Return a dummy valid worker file to bypass loading a missing file.
             return 'data:application/javascript;base64,' + btoa('console.log("Dummy worker loaded.");');
           }
-          // For all other files, load them from the self-hosted folder.
-          return `./ffmpeg-core/${file}`;
-        },
+          return file;
+        }
       });
 
       try {
