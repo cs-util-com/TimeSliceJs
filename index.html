@@ -13,38 +13,19 @@
   <script>
     (async () => {
       try {
-        // Create a dummy worker as a data URL.
-        const dummyWorker = 'data:application/javascript;base64,' + btoa('console.log("Dummy worker loaded.");');
-
-        // Create the FFmpeg instance - Note: it's a function call, not a constructor
-        const ffmpeg = FFmpeg({
+        // Create the FFmpeg instance directly
+        const ffmpeg = new FFmpegWASM({
           log: true,
-          // Use your self-hosted core files:
           corePath: './ffmpeg-core/ffmpeg-core.js',
-          // 'main' signals single-threaded mode.
           mainName: 'main',
-          // Use our dummy worker.
-          workerPath: dummyWorker,
-          // Override locateFile so it never calls atob.
-          locateFile: (file, prefix) => {
-            // For .wasm and .worker.js files, load from our self-hosted folder.
-            if (file.endsWith('.wasm')) return './ffmpeg-core/ffmpeg-core.wasm';
-            if (file.endsWith('.worker.js')) return './ffmpeg-core/ffmpeg-core.worker.js';
-            return prefix + file;
-          }
+          workerPath: 'data:application/javascript;base64,' + btoa('console.log("Dummy worker loaded.");')
         });
-
-        // Prevent the _locateFile branch from running by removing mainScriptUrlOrBlob.
-        if (ffmpeg.Module) {
-          ffmpeg.Module.mainScriptUrlOrBlob = undefined;
-        }
-
         await ffmpeg.load();
-        document.getElementById('status').textContent = "FFmpeg loaded successfully!";
+        document.getElementById('status').textContent = 'FFmpeg loaded successfully.';
         console.log("FFmpeg loaded successfully!");
-      } catch (error) {
-        document.getElementById('status').textContent = "Error loading FFmpeg!";
-        console.error("Error loading FFmpeg:", error);
+      } catch (err) {
+        console.error('Error loading FFmpeg:', err);
+        document.getElementById('status').textContent = `Error loading FFmpeg: ${err}`;
       }
     })();
   </script>
