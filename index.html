@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>ffmpeg.wasm Demo – WebM to MP4 (ESM)</title>
-  <!-- Scripts will be loaded via ES Module import -->
+  <title>ffmpeg.wasm Demo – WebM to MP4 (ESM - Self-Hosted)</title>
+  <!-- Scripts are loaded via local ES Module import -->
   <style>
     body {
       font-family: sans-serif;
@@ -37,7 +37,7 @@
   </style>
 </head>
 <body>
-  <h1>WebM to MP4 Transcoder (ESM Load)</h1>
+  <h1>WebM to MP4 Transcoder (ESM Load - Self-Hosted Assets)</h1>
   <div id="status">Initializing...</div>
   <progress id="progressBar" value="0" max="100"></progress>
   <video id="outputVideo" controls></video>
@@ -62,7 +62,7 @@
     console.log('Module script executing...');
     statusElement.textContent = "Importing FFmpeg library (Local)...";
 
-    // --- Define LOCAL paths --- 
+    // --- Define LOCAL paths ---
     // IMPORTANT: You must manually download ALL FOUR required files:
     // - ffmpeg.js          (from @ffmpeg/ffmpeg@0.12.10/dist/esm/)
     // - worker.js          (from @ffmpeg/ffmpeg@0.12.10/dist/esm/)
@@ -70,47 +70,48 @@
     // - ffmpeg-core.wasm   (from @ffmpeg/core@0.12.10/dist/esm/)
     // and place them in a local directory named 'ffmpeg-assets' relative to index.html
     const ffmpegPath = './ffmpeg-assets/ffmpeg.js';
-    const corePath = './ffmpeg-assets/ffmpeg-core.js'; 
-    
+    const corePath = './ffmpeg-assets/ffmpeg-core.js';
+
     try {
-      // --- Import necessary items from the LOCAL main library build --- 
+      // --- Import necessary items from the LOCAL main library build ---
       // Note: fetchFile might not be exported this way, may need adjustment
-      const { FFmpeg, fetchFile } = await import(ffmpegPath);
+      const { FFmpeg } = await import(ffmpegPath); // Removed fetchFile import
       console.log('FFmpeg LOCAL module imported successfully.');
       statusElement.textContent = "FFmpeg library imported. Initializing...";
 
-      // --- Instantiate the FFmpeg class --- 
-      const ffmpeg = new FFmpeg(); 
+      // --- Instantiate the FFmpeg class ---
+      const ffmpeg = new FFmpeg();
       console.log('FFmpeg instance created.');
 
-      // --- Attach event handlers --- 
+      // --- Attach event handlers ---
       const progressBar = document.getElementById('progressBar');
       ffmpeg.on('progress', ({ progress, time }) => {
+        // progress is 0-1, adjust for display
         const percent = Math.round(progress * 100);
         progressBar.value = percent;
         if (!statusElement.textContent.includes("complete") && !statusElement.textContent.includes("Error")) {
-             statusElement.textContent = `Processing... ${percent}%`;
+             // Check time exists and format it
+             const timeStr = time ? ` (Time: ${Math.round(time / 1000)}s)` : '';
+             statusElement.textContent = `Processing... ${percent}%${timeStr}`;
         }
       });
       ffmpeg.on('log', ({ type, message }) => {
-        console.log(`[ffmpeg ${type}] ${message}`);
+        console.log(`[ffmpeg ${type}] ${message}`); // Log to console
       });
 
-      // --- Load the core using LOCAL path --- 
+      // --- Load the core using LOCAL path ---
       statusElement.textContent = "Loading locally hosted ffmpeg.wasm core (may take time)...";
       console.log(`Loading FFmpeg core via ffmpeg.load() using local coreURL: ${corePath}...`);
-      await ffmpeg.load({ coreURL: corePath }); 
+      await ffmpeg.load({ coreURL: corePath });
       console.log('FFmpeg core loaded successfully via ffmpeg.load()');
       statusElement.textContent = "FFmpeg core loaded.";
 
-      // --- Start FFmpeg processing --- 
+      // --- Start FFmpeg processing ---
       const videoEl = document.getElementById('outputVideo');
-      
+
       statusElement.textContent = "Fetching input video file...";
       console.log('Fetching input video...');
-      // We still need a way to fetch the remote video file.
-      // The imported fetchFile might not work if it wasn't exported or relies on CDN context.
-      // Use standard fetch for the video file as a fallback.
+      // Use standard fetch for the video file.
       const videoResponse = await fetch(
         "https://raw.githubusercontent.com/ffmpegwasm/testdata/master/Big_Buck_Bunny_180_10s.webm"
       );
@@ -133,7 +134,7 @@
 
       const blob = new Blob([outputData.buffer], { type: 'video/mp4' });
       const videoURL = URL.createObjectURL(blob);
-      
+
       videoEl.src = videoURL;
       console.log('Video source set');
 
