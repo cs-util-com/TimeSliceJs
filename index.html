@@ -62,46 +62,28 @@
     console.log('Module script executing...');
     statusElement.textContent = "Importing FFmpeg library (ESM)...";
 
-    // --- Define ESM URLs (reverting to version 0.12.10) --- 
+    // --- Define ESM URL for main library (v0.12.10) ---
     const ffmpegVersion = "0.12.10";
-    const coreVersion = "0.12.10"; // Use matching core version
     const ffmpegUrl = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${ffmpegVersion}/+esm`;
-    const coreJsUrl = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${coreVersion}/dist/esm/ffmpeg-core.js`; 
-    const coreWasmUrl = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${coreVersion}/dist/esm/ffmpeg-core.wasm`;
-    const workerUrl = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${ffmpegVersion}/dist/esm/worker.js`;
-
-    // Helper function to fetch a URL and create a Blob URL
-    async function toBlobURL(url, mimeType) {
-        statusElement.textContent = `Fetching ${url.substring(url.lastIndexOf('/') + 1)}...`;
-        console.log(`Fetching ${url}...`);
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
-        }
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        console.log(`Created Blob URL for ${url}: ${blobUrl}`);
-        return blobUrl;
-    }
+    
+    // --- Define LOCAL path for core assets --- 
+    // IMPORTANT: You must manually download ffmpeg-core.js and ffmpeg-core.wasm
+    // from https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/
+    // and place them in a local directory named 'ffmpeg-assets' relative to index.html
+    const corePath = './ffmpeg-assets/ffmpeg-core.js'; 
     
     try {
-      // --- Import necessary items from the ESM build --- 
+      // --- Import necessary items from the main library ESM build --- 
       const { FFmpeg, fetchFile } = await import(ffmpegUrl);
       console.log('FFmpeg ESM module imported successfully.');
-      statusElement.textContent = "FFmpeg library imported. Preparing assets...";
-
-      // --- Create Blob URLs for core and worker scripts --- 
-      statusElement.textContent = "Fetching required assets...";
-      const coreBlobUrl = await toBlobURL(coreJsUrl, 'text/javascript');
-      const wasmBlobUrl = await toBlobURL(coreWasmUrl, 'application/wasm');
-      const workerBlobUrl = await toBlobURL(workerUrl, 'text/javascript');
-      statusElement.textContent = "Assets fetched and prepared.";
+      statusElement.textContent = "FFmpeg library imported. Initializing...";
 
       // --- Instantiate the FFmpeg class --- 
       const ffmpeg = new FFmpeg(); 
       console.log('FFmpeg instance created.');
 
       // --- Attach event handlers --- 
+      const progressBar = document.getElementById('progressBar'); // Define progressBar here
       ffmpeg.on('progress', ({ progress, time }) => {
         const percent = Math.round(progress * 100);
         progressBar.value = percent;
@@ -113,20 +95,16 @@
         console.log(`[ffmpeg ${type}] ${message}`);
       });
 
-      // --- Load the core using Blob URLs and trying workerLoadURL --- 
-      statusElement.textContent = "Loading ffmpeg.wasm core (may take time)...";
-      console.log(`Loading FFmpeg core via ffmpeg.load() using Blob URLs (v${coreVersion})...`);
-      await ffmpeg.load({
-          coreURL: coreBlobUrl, 
-          wasmURL: wasmBlobUrl,
-          // Try using workerLoadURL key based on GH issue
-          workerLoadURL: workerBlobUrl 
-      }); 
+      // --- Load the core using LOCAL path --- 
+      statusElement.textContent = "Loading locally hosted ffmpeg.wasm core (may take time)...";
+      console.log(`Loading FFmpeg core via ffmpeg.load() using local coreURL: ${corePath}...`);
+      // Load specifying only the local core URL. WASM path is inferred.
+      // Worker loading should now hopefully work relative to the main imported module or core path.
+      await ffmpeg.load({ coreURL: corePath }); 
       console.log('FFmpeg core loaded successfully via ffmpeg.load()');
       statusElement.textContent = "FFmpeg core loaded.";
 
       // --- Start FFmpeg processing --- 
-      const progressBar = document.getElementById('progressBar');
       const videoEl = document.getElementById('outputVideo');
       
       statusElement.textContent = "Fetching input video file...";
@@ -149,12 +127,7 @@
 
       const blob = new Blob([outputData.buffer], { type: 'video/mp4' });
       const videoURL = URL.createObjectURL(blob);
-      // Revoke helper blob URLs now that ffmpeg is loaded
-      URL.revokeObjectURL(coreBlobUrl);
-      URL.revokeObjectURL(wasmBlobUrl);
-      URL.revokeObjectURL(workerBlobUrl);
-      console.log('Revoked temporary Blob URLs');
-
+      
       videoEl.src = videoURL;
       console.log('Video source set');
 
@@ -169,8 +142,8 @@
       errorLogElement.textContent += `\n[Error] ${errorMsg}\n---------------\n`;
       if (err.message && err.message.includes("import")) {
           statusElement.textContent = "Error importing FFmpeg library. Check console/network.";
-      } else if (statusElement.textContent.includes("Fetching") || statusElement.textContent.includes("Loading")) {
-          statusElement.textContent = "Error fetching/loading FFmpeg assets. Check URLs and network.";
+      } else if (statusElement.textContent.includes("Loading")) {
+          statusElement.textContent = "Error loading FFmpeg core. Check local path and file existence.";
       } else {
           statusElement.textContent = "Error during processing. Check error log.";
       }
