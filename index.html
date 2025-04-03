@@ -13,13 +13,47 @@
   <script>
     (async () => {
       try {
-        // Create the FFmpeg instance directly
-        const ffmpeg = new FFmpegWASM({
-          log: true,
-          corePath: './ffmpeg-core/ffmpeg-core.js',
-          mainName: 'main',
-          workerPath: 'data:application/javascript;base64,' + btoa('console.log("Dummy worker loaded.");')
-        });
+        // Log more detailed information about FFmpegWASM
+        console.log("FFmpegWASM type:", typeof FFmpegWASM);
+        console.log("FFmpegWASM keys:", Object.keys(FFmpegWASM));
+        console.log("FFmpegWASM prototype:", Object.getPrototypeOf(FFmpegWASM));
+        console.log("FFmpegWASM properties:", Object.getOwnPropertyNames(FFmpegWASM));
+        
+        // Try to create FFmpeg instance based on what's available
+        let ffmpeg;
+        
+        // Check if FFmpegWASM is a constructor itself
+        if (typeof FFmpegWASM === 'function') {
+          ffmpeg = new FFmpegWASM({
+            log: true,
+            corePath: './ffmpeg-core/ffmpeg-core.js',
+            mainName: 'main',
+            workerPath: 'data:application/javascript;base64,' + btoa('console.log("Dummy worker loaded.");')
+          });
+        } 
+        // Check if it's directly callable as a factory function
+        else if (typeof FFmpegWASM === 'object') {
+          // Try using the createFFmpeg function directly
+          const options = {
+            log: true,
+            corePath: './ffmpeg-core/ffmpeg-core.js',
+            mainName: 'main',
+            workerPath: 'data:application/javascript;base64,' + btoa('console.log("Dummy worker loaded.");')
+          };
+          
+          // Access prototype method if it exists
+          if (typeof FFmpegWASM.__proto__ === 'object' && typeof FFmpegWASM.__proto__.createFFmpeg === 'function') {
+            ffmpeg = FFmpegWASM.__proto__.createFFmpeg(options);
+          } else {
+            // Final fallback - access it through window global
+            ffmpeg = window.createFFmpeg ? window.createFFmpeg(options) : null;
+          }
+        }
+        
+        if (!ffmpeg) {
+          throw new Error("Could not initialize FFmpeg - no valid constructor or factory method found");
+        }
+
         await ffmpeg.load();
         document.getElementById('status').textContent = 'FFmpeg loaded successfully.';
         console.log("FFmpeg loaded successfully!");
