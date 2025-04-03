@@ -64,21 +64,43 @@
 
     // --- Define ESM URLs --- 
     const ffmpegUrl = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/+esm";
-    const coreUrl = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.4/+esm"; 
+    const coreJsUrl = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.4/dist/esm/ffmpeg-core.js"; 
+    const coreWasmUrl = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.4/dist/esm/ffmpeg-core.wasm";
+    // Corrected Worker URL - assuming it's alongside the ESM core/main
+    const workerUrl = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/esm/worker.js"; 
+
+    // Helper function to fetch a URL and create a Blob URL
+    async function toBlobURL(url, mimeType) {
+        statusElement.textContent = `Fetching ${url.substring(url.lastIndexOf('/') + 1)}...`;
+        console.log(`Fetching ${url}...`);
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
+        }
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        console.log(`Created Blob URL for ${url}: ${blobUrl}`);
+        return blobUrl;
+    }
     
     try {
       // --- Import necessary items from the ESM build --- 
-      // Assume FFmpeg is the class and fetchFile is a utility
       const { FFmpeg, fetchFile } = await import(ffmpegUrl);
       console.log('FFmpeg ESM module imported successfully.');
-      statusElement.textContent = "FFmpeg library imported. Initializing...";
+      statusElement.textContent = "FFmpeg library imported. Preparing assets...";
+
+      // --- Create Blob URLs for core and worker scripts --- 
+      statusElement.textContent = "Fetching required assets...";
+      const coreBlobUrl = await toBlobURL(coreJsUrl, 'text/javascript');
+      const wasmBlobUrl = await toBlobURL(coreWasmUrl, 'application/wasm');
+      const workerBlobUrl = await toBlobURL(workerUrl, 'text/javascript');
+      statusElement.textContent = "Assets fetched and prepared.";
 
       // --- Instantiate the FFmpeg class --- 
       const ffmpeg = new FFmpeg(); 
       console.log('FFmpeg instance created.');
 
-      // --- Attach progress handler if available --- 
-      // The way to attach progress might have changed, check docs if this fails
+      // --- Attach event handlers --- 
       ffmpeg.on('progress', ({ progress, time }) => {
         const percent = Math.round(progress * 100);
         progressBar.value = percent;
@@ -86,16 +108,18 @@
              statusElement.textContent = `Processing... ${percent}%`;
         }
       });
-      // Attach log handler
       ffmpeg.on('log', ({ type, message }) => {
         console.log(`[ffmpeg ${type}] ${message}`);
       });
 
-      // --- Load the core --- 
+      // --- Load the core using Blob URLs --- 
       statusElement.textContent = "Loading ffmpeg.wasm core (may take time)...";
-      console.log(`Loading FFmpeg core via ffmpeg.load() using coreURL: ${coreUrl}`);
-      // Pass configuration to load method (assuming API change)
-      await ffmpeg.load({ coreURL: coreUrl }); 
+      console.log(`Loading FFmpeg core via ffmpeg.load() using Blob URLs...`);
+      await ffmpeg.load({
+          coreURL: coreBlobUrl, 
+          wasmURL: wasmBlobUrl,
+          workerURL: workerBlobUrl
+      }); 
       console.log('FFmpeg core loaded successfully via ffmpeg.load()');
       statusElement.textContent = "FFmpeg core loaded.";
 
@@ -103,38 +127,38 @@
       const progressBar = document.getElementById('progressBar');
       const videoEl = document.getElementById('outputVideo');
       
-      statusElement.textContent = "Fetching video file...";
-      console.log('Fetching video...');
-      // Use the imported fetchFile utility
+      statusElement.textContent = "Fetching input video file...";
+      console.log('Fetching input video...');
       const videoData = await fetchFile(
         "https://raw.githubusercontent.com/ffmpegwasm/testdata/master/Big_Buck_Bunny_180_10s.webm"
       );
-      console.log('Video fetched successfully');
+      console.log('Input video fetched successfully');
 
-      // Use writeFile method on the instance
       await ffmpeg.writeFile('input.webm', videoData);
-      console.log('Video written to virtual filesystem');
+      console.log('Input video written to virtual filesystem');
 
       statusElement.textContent = "Transcoding to MP4 (this may take a moment)...";
       console.log('Starting transcoding...');
-      // Use exec method (new API?) instead of run
       await ffmpeg.exec(['-i', 'input.webm', 'output.mp4']);
       console.log('Transcoding completed');
 
-      // Use readFile method on the instance
       const outputData = await ffmpeg.readFile('output.mp4');
       console.log('Output file read');
 
       const blob = new Blob([outputData.buffer], { type: 'video/mp4' });
       const videoURL = URL.createObjectURL(blob);
+      // Revoke helper blob URLs now that ffmpeg is loaded
+      URL.revokeObjectURL(coreBlobUrl);
+      URL.revokeObjectURL(wasmBlobUrl);
+      URL.revokeObjectURL(workerBlobUrl);
+      console.log('Revoked temporary Blob URLs');
+
       videoEl.src = videoURL;
       console.log('Video source set');
 
       statusElement.textContent = "Transcoding complete! Click play to view.";
       progressBar.value = 100;
 
-      // Cleanup might not be needed or done differently 
-      // ffmpeg.FS('unlink', 'input.webm'); // FS might not be directly exposed
       console.log('Processing finished.');
 
     } catch (err) {
@@ -143,8 +167,8 @@
       errorLogElement.textContent += `\n[Error] ${errorMsg}\n---------------\n`;
       if (err.message && err.message.includes("import")) {
           statusElement.textContent = "Error importing FFmpeg library. Check console/network.";
-      } else if (statusElement.textContent.includes("Loading")) {
-          statusElement.textContent = "Error loading FFmpeg core. Check core URL and network.";
+      } else if (statusElement.textContent.includes("Fetching") || statusElement.textContent.includes("Loading")) {
+          statusElement.textContent = "Error fetching/loading FFmpeg assets. Check URLs and network.";
       } else {
           statusElement.textContent = "Error during processing. Check error log.";
       }
