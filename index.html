@@ -1,67 +1,155 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>FFmpeg.wasm Single-Threaded Self-Hosted Example</title>
+  <meta charset="UTF-8" />
+  <title>ffmpeg.wasm Demo – WebM to MP4 (ESM)</title>
+  <!-- Scripts will be loaded via ES Module import -->
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 0 20px;
+    }
+    #status {
+      margin: 20px 0;
+      font-weight: bold;
+    }
+    #progressBar {
+      width: 100%;
+      max-width: 400px;
+      margin: 10px 0;
+    }
+    #outputVideo {
+      max-width: 100%;
+      margin: 20px 0;
+    }
+    #errorLog {
+      color: red;
+      white-space: pre-wrap;
+      background: #f8f8f8;
+      padding: 10px;
+      border-radius: 4px;
+      display: block; /* Make sure errors are visible by default */
+      border: 1px solid #ddd;
+      margin-top: 10px;
+    }
+  </style>
 </head>
 <body>
-  <p id="status">Loading FFmpeg...</p>
-  
-  <!-- Load FFmpeg API from local files -->
-  <script src="./ffmpeg-core/ffmpeg.js"></script>
-  <script src="./ffmpeg-core/814.ffmpeg.js"></script>
-  <script>
-    (async () => {
-      try {
-        // Log more detailed information about FFmpegWASM
-        console.log("FFmpegWASM type:", typeof FFmpegWASM);
-        console.log("FFmpegWASM keys:", Object.keys(FFmpegWASM));
-        console.log("FFmpegWASM prototype:", Object.getPrototypeOf(FFmpegWASM));
-        console.log("FFmpegWASM properties:", Object.getOwnPropertyNames(FFmpegWASM));
-        
-        // Try to create FFmpeg instance based on what's available
-        let ffmpeg;
-        
-        // Check if FFmpegWASM is a constructor itself
-        if (typeof FFmpegWASM === 'function') {
-          ffmpeg = new FFmpegWASM({
-            log: true,
-            corePath: './ffmpeg-core/ffmpeg-core.js',
-            mainName: 'main',
-            workerPath: 'data:application/javascript;base64,' + btoa('console.log("Dummy worker loaded.");')
-          });
-        } 
-        // Check if it's directly callable as a factory function
-        else if (typeof FFmpegWASM === 'object') {
-          // Try using the createFFmpeg function directly
-          const options = {
-            log: true,
-            corePath: './ffmpeg-core/ffmpeg-core.js',
-            mainName: 'main',
-            workerPath: 'data:application/javascript;base64,' + btoa('console.log("Dummy worker loaded.");')
-          };
-          
-          // Access prototype method if it exists
-          if (typeof FFmpegWASM.__proto__ === 'object' && typeof FFmpegWASM.__proto__.createFFmpeg === 'function') {
-            ffmpeg = FFmpegWASM.__proto__.createFFmpeg(options);
-          } else {
-            // Final fallback - access it through window global
-            ffmpeg = window.createFFmpeg ? window.createFFmpeg(options) : null;
-          }
-        }
-        
-        if (!ffmpeg) {
-          throw new Error("Could not initialize FFmpeg - no valid constructor or factory method found");
-        }
+  <h1>WebM to MP4 Transcoder (ESM Load)</h1>
+  <div id="status">Initializing...</div>
+  <progress id="progressBar" value="0" max="100"></progress>
+  <video id="outputVideo" controls></video>
+  <pre id="errorLog">Error Log:
+---------------
+</pre>
 
-        await ffmpeg.load();
-        document.getElementById('status').textContent = 'FFmpeg loaded successfully.';
-        console.log("FFmpeg loaded successfully!");
-      } catch (err) {
-        console.error('Error loading FFmpeg:', err);
-        document.getElementById('status').textContent = `Error loading FFmpeg: ${err}`;
+  <script type="module">
+    const errorLogElement = document.getElementById('errorLog');
+    const statusElement = document.getElementById('status');
+
+    // Global error handler
+    window.onerror = function(message, source, lineno, colno, error) {
+      console.error("[Global Error Handler]", message, source, lineno, colno, error);
+      errorLogElement.textContent += `\n[Global Error] ${message}\n  Source: ${source}\n  Line: ${lineno}, Col: ${colno}\n  Error Obj: ${error ? error.stack || error : 'N/A'}\n---------------\n`;
+      if (!statusElement.textContent.startsWith("Error")) {
+          statusElement.textContent = "A critical error occurred. Check error log.";
       }
-    })();
+      return false;
+    };
+
+    console.log('Module script executing...');
+    statusElement.textContent = "Importing FFmpeg library (ESM)...";
+
+    // --- Define ESM URLs --- 
+    const ffmpegUrl = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/+esm";
+    const coreUrl = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.4/+esm"; 
+    
+    try {
+      // --- Import necessary items from the ESM build --- 
+      // Assume FFmpeg is the class and fetchFile is a utility
+      const { FFmpeg, fetchFile } = await import(ffmpegUrl);
+      console.log('FFmpeg ESM module imported successfully.');
+      statusElement.textContent = "FFmpeg library imported. Initializing...";
+
+      // --- Instantiate the FFmpeg class --- 
+      const ffmpeg = new FFmpeg(); 
+      console.log('FFmpeg instance created.');
+
+      // --- Attach progress handler if available --- 
+      // The way to attach progress might have changed, check docs if this fails
+      ffmpeg.on('progress', ({ progress, time }) => {
+        const percent = Math.round(progress * 100);
+        progressBar.value = percent;
+        if (!statusElement.textContent.includes("complete") && !statusElement.textContent.includes("Error")) {
+             statusElement.textContent = `Processing... ${percent}%`;
+        }
+      });
+      // Attach log handler
+      ffmpeg.on('log', ({ type, message }) => {
+        console.log(`[ffmpeg ${type}] ${message}`);
+      });
+
+      // --- Load the core --- 
+      statusElement.textContent = "Loading ffmpeg.wasm core (may take time)...";
+      console.log(`Loading FFmpeg core via ffmpeg.load() using coreURL: ${coreUrl}`);
+      // Pass configuration to load method (assuming API change)
+      await ffmpeg.load({ coreURL: coreUrl }); 
+      console.log('FFmpeg core loaded successfully via ffmpeg.load()');
+      statusElement.textContent = "FFmpeg core loaded.";
+
+      // --- Start FFmpeg processing --- 
+      const progressBar = document.getElementById('progressBar');
+      const videoEl = document.getElementById('outputVideo');
+      
+      statusElement.textContent = "Fetching video file...";
+      console.log('Fetching video...');
+      // Use the imported fetchFile utility
+      const videoData = await fetchFile(
+        "https://raw.githubusercontent.com/ffmpegwasm/testdata/master/Big_Buck_Bunny_180_10s.webm"
+      );
+      console.log('Video fetched successfully');
+
+      // Use writeFile method on the instance
+      await ffmpeg.writeFile('input.webm', videoData);
+      console.log('Video written to virtual filesystem');
+
+      statusElement.textContent = "Transcoding to MP4 (this may take a moment)...";
+      console.log('Starting transcoding...');
+      // Use exec method (new API?) instead of run
+      await ffmpeg.exec(['-i', 'input.webm', 'output.mp4']);
+      console.log('Transcoding completed');
+
+      // Use readFile method on the instance
+      const outputData = await ffmpeg.readFile('output.mp4');
+      console.log('Output file read');
+
+      const blob = new Blob([outputData.buffer], { type: 'video/mp4' });
+      const videoURL = URL.createObjectURL(blob);
+      videoEl.src = videoURL;
+      console.log('Video source set');
+
+      statusElement.textContent = "Transcoding complete! Click play to view.";
+      progressBar.value = 100;
+
+      // Cleanup might not be needed or done differently 
+      // ffmpeg.FS('unlink', 'input.webm'); // FS might not be directly exposed
+      console.log('Processing finished.');
+
+    } catch (err) {
+      console.error('Error during module import or FFmpeg operation:', err);
+      const errorMsg = `An error occurred: ${err.stack || err.toString()}`;
+      errorLogElement.textContent += `\n[Error] ${errorMsg}\n---------------\n`;
+      if (err.message && err.message.includes("import")) {
+          statusElement.textContent = "Error importing FFmpeg library. Check console/network.";
+      } else if (statusElement.textContent.includes("Loading")) {
+          statusElement.textContent = "Error loading FFmpeg core. Check core URL and network.";
+      } else {
+          statusElement.textContent = "Error during processing. Check error log.";
+      }
+    }
+
   </script>
 </body>
 </html>
