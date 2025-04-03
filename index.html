@@ -60,22 +60,23 @@
     };
 
     console.log('Module script executing...');
-    statusElement.textContent = "Importing FFmpeg library (ESM)...";
+    statusElement.textContent = "Importing FFmpeg library (Local)...";
 
-    // --- Define ESM URL for main library (v0.12.10) ---
-    const ffmpegVersion = "0.12.10";
-    const ffmpegUrl = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${ffmpegVersion}/+esm`;
-    
-    // --- Define LOCAL path for core assets --- 
-    // IMPORTANT: You must manually download ffmpeg-core.js and ffmpeg-core.wasm
-    // from https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/
+    // --- Define LOCAL paths --- 
+    // IMPORTANT: You must manually download ALL FOUR required files:
+    // - ffmpeg.js          (from @ffmpeg/ffmpeg@0.12.10/dist/esm/)
+    // - worker.js          (from @ffmpeg/ffmpeg@0.12.10/dist/esm/)
+    // - ffmpeg-core.js     (from @ffmpeg/core@0.12.10/dist/esm/)
+    // - ffmpeg-core.wasm   (from @ffmpeg/core@0.12.10/dist/esm/)
     // and place them in a local directory named 'ffmpeg-assets' relative to index.html
+    const ffmpegPath = './ffmpeg-assets/ffmpeg.js';
     const corePath = './ffmpeg-assets/ffmpeg-core.js'; 
     
     try {
-      // --- Import necessary items from the main library ESM build --- 
-      const { FFmpeg, fetchFile } = await import(ffmpegUrl);
-      console.log('FFmpeg ESM module imported successfully.');
+      // --- Import necessary items from the LOCAL main library build --- 
+      // Note: fetchFile might not be exported this way, may need adjustment
+      const { FFmpeg, fetchFile } = await import(ffmpegPath);
+      console.log('FFmpeg LOCAL module imported successfully.');
       statusElement.textContent = "FFmpeg library imported. Initializing...";
 
       // --- Instantiate the FFmpeg class --- 
@@ -83,7 +84,7 @@
       console.log('FFmpeg instance created.');
 
       // --- Attach event handlers --- 
-      const progressBar = document.getElementById('progressBar'); // Define progressBar here
+      const progressBar = document.getElementById('progressBar');
       ffmpeg.on('progress', ({ progress, time }) => {
         const percent = Math.round(progress * 100);
         progressBar.value = percent;
@@ -98,8 +99,6 @@
       // --- Load the core using LOCAL path --- 
       statusElement.textContent = "Loading locally hosted ffmpeg.wasm core (may take time)...";
       console.log(`Loading FFmpeg core via ffmpeg.load() using local coreURL: ${corePath}...`);
-      // Load specifying only the local core URL. WASM path is inferred.
-      // Worker loading should now hopefully work relative to the main imported module or core path.
       await ffmpeg.load({ coreURL: corePath }); 
       console.log('FFmpeg core loaded successfully via ffmpeg.load()');
       statusElement.textContent = "FFmpeg core loaded.";
@@ -109,9 +108,16 @@
       
       statusElement.textContent = "Fetching input video file...";
       console.log('Fetching input video...');
-      const videoData = await fetchFile(
+      // We still need a way to fetch the remote video file.
+      // The imported fetchFile might not work if it wasn't exported or relies on CDN context.
+      // Use standard fetch for the video file as a fallback.
+      const videoResponse = await fetch(
         "https://raw.githubusercontent.com/ffmpegwasm/testdata/master/Big_Buck_Bunny_180_10s.webm"
       );
+      if (!videoResponse.ok) {
+        throw new Error(`Failed to fetch video: ${videoResponse.status} ${videoResponse.statusText}`);
+      }
+      const videoData = new Uint8Array(await videoResponse.arrayBuffer());
       console.log('Input video fetched successfully');
 
       await ffmpeg.writeFile('input.webm', videoData);
@@ -141,7 +147,7 @@
       const errorMsg = `An error occurred: ${err.stack || err.toString()}`;
       errorLogElement.textContent += `\n[Error] ${errorMsg}\n---------------\n`;
       if (err.message && err.message.includes("import")) {
-          statusElement.textContent = "Error importing FFmpeg library. Check console/network.";
+          statusElement.textContent = "Error importing local FFmpeg library. Check path/file existence.";
       } else if (statusElement.textContent.includes("Loading")) {
           statusElement.textContent = "Error loading FFmpeg core. Check local path and file existence.";
       } else {
