@@ -62,13 +62,13 @@
     console.log('Module script executing...');
     statusElement.textContent = "Importing FFmpeg library (ESM)...";
 
-    // --- Define ESM URLs (using version 0.12.15) --- 
-    const ffmpegVersion = "0.12.15";
-    const coreVersion = "0.12.15"; // Use matching core version
+    // --- Define ESM URLs (reverting to version 0.12.10) --- 
+    const ffmpegVersion = "0.12.10";
+    const coreVersion = "0.12.10"; // Use matching core version
     const ffmpegUrl = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${ffmpegVersion}/+esm`;
     const coreJsUrl = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${coreVersion}/dist/esm/ffmpeg-core.js`; 
     const coreWasmUrl = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${coreVersion}/dist/esm/ffmpeg-core.wasm`;
-    const workerUrl = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${ffmpegVersion}/dist/esm/worker.js`; 
+    const workerUrl = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${ffmpegVersion}/dist/esm/worker.js`;
 
     // Helper function to fetch a URL and create a Blob URL
     async function toBlobURL(url, mimeType) {
