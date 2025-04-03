@@ -62,12 +62,13 @@
     console.log('Module script executing...');
     statusElement.textContent = "Importing FFmpeg library (ESM)...";
 
-    // --- Define ESM URLs --- 
-    const ffmpegUrl = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/+esm";
-    const coreJsUrl = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.4/dist/esm/ffmpeg-core.js"; 
-    const coreWasmUrl = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.4/dist/esm/ffmpeg-core.wasm";
-    // Corrected Worker URL - assuming it's alongside the ESM core/main
-    const workerUrl = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/esm/worker.js"; 
+    // --- Define ESM URLs (using version 0.12.10) --- 
+    const ffmpegVersion = "0.12.10";
+    const coreVersion = "0.12.10"; // Use matching core version
+    const ffmpegUrl = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${ffmpegVersion}/+esm`;
+    const coreJsUrl = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${coreVersion}/dist/esm/ffmpeg-core.js`; 
+    const coreWasmUrl = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${coreVersion}/dist/esm/ffmpeg-core.wasm`;
+    const workerUrl = `https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${ffmpegVersion}/dist/esm/worker.js`; 
 
     // Helper function to fetch a URL and create a Blob URL
     async function toBlobURL(url, mimeType) {
@@ -112,13 +113,14 @@
         console.log(`[ffmpeg ${type}] ${message}`);
       });
 
-      // --- Load the core using Blob URLs --- 
+      // --- Load the core using Blob URLs and trying workerLoadURL --- 
       statusElement.textContent = "Loading ffmpeg.wasm core (may take time)...";
-      console.log(`Loading FFmpeg core via ffmpeg.load() using Blob URLs...`);
+      console.log(`Loading FFmpeg core via ffmpeg.load() using Blob URLs (v${coreVersion})...`);
       await ffmpeg.load({
           coreURL: coreBlobUrl, 
           wasmURL: wasmBlobUrl,
-          classWorkerURL: workerBlobUrl
+          // Try using workerLoadURL key based on GH issue
+          workerLoadURL: workerBlobUrl 
       }); 
       console.log('FFmpeg core loaded successfully via ffmpeg.load()');
       statusElement.textContent = "FFmpeg core loaded.";
