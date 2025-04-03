@@ -118,7 +118,7 @@
       await ffmpeg.load({
           coreURL: coreBlobUrl, 
           wasmURL: wasmBlobUrl,
-          workerURL: workerBlobUrl
+          classWorkerURL: workerBlobUrl
       }); 
       console.log('FFmpeg core loaded successfully via ffmpeg.load()');
       statusElement.textContent = "FFmpeg core loaded.";
