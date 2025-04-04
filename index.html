@@ -45,6 +45,18 @@
 ---------------
 </pre>
 
+  <!-- Set webpack public path BEFORE the module script runs -->
+  // This helps ffmpeg.js find its own assets (like the worker)
+  <script>
+    (() => {
+      // Must redefine path here as module script hasn't run yet
+      const ffmpegPath = './ffmpeg-assets/ffmpeg.js'; 
+      const ffmpegDir = new URL(ffmpegPath, document.baseURI).href.replace(/\/[^\/]*$/, '/');
+      globalThis.__webpack_public_path__ = ffmpegDir;
+      console.log(`[Global Script] Setting __webpack_public_path__ to: ${globalThis.__webpack_public_path__}`);
+    })();
+  </script>
+
   <script type="module">
     const errorLogElement = document.getElementById('errorLog');
     const statusElement = document.getElementById('status');
@@ -73,11 +85,6 @@
     const corePath = './ffmpeg-assets/ffmpeg-core.js';
 
     try {
-      // --- Set public path BEFORE importing --- 
-      // This helps ffmpeg.js find its own assets (like the worker)
-      const ffmpegDir = new URL(ffmpegPath, document.baseURI).href.replace(/\/[^\/]*$/, '/');
-      globalThis.__webpack_public_path__ = ffmpegDir; 
-      console.log(`Setting __webpack_public_path__ to: ${globalThis.__webpack_public_path__}`);
 
       // --- Import necessary items from the LOCAL main library build ---
       // Note: fetchFile might not be exported this way, may need adjustment
