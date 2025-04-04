@@ -363,10 +363,14 @@
             const data = new Uint8Array(await file.arrayBuffer());
             await ffmpeg.writeFile(inputFilename, data);
 
+            // Extract original filename without extension and sanitize it
+            const originalFilename = file.name.split('.').slice(0, -1).join('.');
+            const sanitizedFilename = originalFilename.replace(/[/\\?%*:|"<>]/g, '_'); // Replace illegal filename chars
+
             let savedFiles = [];
             let currentTime = 0;
             while (currentTime < duration) {
-                const outputFilename = `video_${fileIndex}__${currentTime.toFixed(2)}s.jpg`;
+                const outputFilename = `${sanitizedFilename}__${currentTime.toFixed(2)}s.jpg`;
                 // Check if a file with the same name already exists (and skip if it does)
                 try {
                     await directoryHandle.getFileHandle(outputFilename, { create: false });
