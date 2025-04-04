@@ -39,6 +39,13 @@
             </div>
         </div>
 
+        <div class="mb-4">
+            <!-- Added input for frames per second -->
+            <label for="fpsInput" class="block text-sm font-medium text-gray-700 mb-1">Frames Per Second:</label>
+            <input type="number" id="fpsInput" value="2" step="0.1" min="0.1"
+                   class="block w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 cursor-pointer focus:outline-none p-2" />
+        </div>
+
         <!-- Action Button -->
         <button id="extractButton" disabled
                 class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed">
@@ -324,67 +331,55 @@
             console.log(`${outputFilename} extracted.`);
         }
 
+        async function getVideoDuration(file) {
+            return new Promise((resolve, reject) => {
+                const video = document.createElement('video');
+                video.preload = 'metadata';
+                video.onloadedmetadata = () => {
+                    resolve(video.duration);
+                };
+                video.onerror = reject;
+                video.src = URL.createObjectURL(file);
+            });
+        }
+
         async function processFrames(file) {
-            const inputFilename = "input." + file.name.split('.').pop();
-            const frames = [
-                { timestamp: 1, filename: 'frame_01s.jpg' },
-                { timestamp: 5, filename: 'frame_05s.jpg' }
-            ];
-            
-            const savedFiles = [];
-            
+            const fps = parseFloat(document.getElementById('fpsInput')?.value || '2');
+            let duration = 0;
             try {
-                // Verify we still have permission before starting process
-                if (!directoryHandle || !(await verifyPermission(directoryHandle, true))) {
-                    if (directoryHandle) {
-                        logError('Write permission for the selected folder was denied. Please select folder again.');
-                        directoryHandle = null;
-                        selectedFolderElement.textContent = 'No folder selected (permission denied)';
-                        selectedFolderElement.classList.remove('text-green-600');
-                        selectedFolderElement.classList.add('text-red-500');
-                    } else {
-                        logError('No directory selected. Please select an output folder.');
-                    }
-                    updateButtonState();
-                    return;
-                }
-                
-                // Load video file
-                const data = new Uint8Array(await file.arrayBuffer());
-                updateStatus(`Writing ${inputFilename} to virtual filesystem...`);
-                await ffmpeg.writeFile(inputFilename, data);
-                
-                // Extract and save frames one by one to minimize memory usage
-                for (const frame of frames) {
-                    // Extract the frame
-                    await extractFrame(inputFilename, frame.timestamp, frame.filename);
-                    
-                    // Immediately read and save to folder
-                    updateStatus(`Saving ${frame.filename} to folder...`);
-                    const frameData = await ffmpeg.readFile(frame.filename);
-                    const success = await saveFrameToFolder(frameData, frame.filename);
-                    
-                    if (success) {
-                        savedFiles.push(frame.filename);
-                    }
-                    
-                    // Delete from ffmpeg virtual filesystem right away
-                    await ffmpeg.deleteFile(frame.filename);
-                }
-                
-                // Clean up input file
-                await ffmpeg.deleteFile(inputFilename);
-                
-                // Display results
-                if (savedFiles.length > 0) {
-                    displaySavedFilesInfo(savedFiles);
-                    updateStatus('Extraction complete! Frames saved to the selected folder.');
-                } else {
-                    updateStatus('No frames were successfully saved.');
-                }
-                
+                duration = await getVideoDuration(file);
             } catch (err) {
-                throw err;
+                logError('Unable to read video duration.', err);
+                return;
+            }
+
+            const inputFilename = "input." + file.name.split('.').pop();
+            const data = new Uint8Array(await file.arrayBuffer());
+            await ffmpeg.writeFile(inputFilename, data);
+
+            let savedFiles = [];
+            let currentTime = 0;
+            while (currentTime < duration) {
+                const outputFilename = `frame_${currentTime.toFixed(2)}s.jpg`;
+                try {
+                    await extractFrame(inputFilename, currentTime, outputFilename);
+                    const frameData = await ffmpeg.readFile(outputFilename);
+                    const success = await saveFrameToFolder(frameData, outputFilename);
+                    if (success) savedFiles.push(outputFilename);
+                    await ffmpeg.deleteFile(outputFilename);
+                } catch (err) {
+                    logError(`Extraction stopped at ${currentTime.toFixed(2)}s`, err);
+                    break;
+                }
+                currentTime += 1 / fps;
+            }
+
+            await ffmpeg.deleteFile(inputFilename);
+            if (savedFiles.length > 0) {
+                displaySavedFilesInfo(savedFiles);
+                updateStatus('Extraction complete! Frames saved to the selected folder.');
+            } else {
+                updateStatus('No frames were successfully saved.');
             }
         }
 
