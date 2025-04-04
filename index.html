@@ -581,9 +581,10 @@
           // Build ffmpeg command
           const ffmpegCommand = [
             '-i', 'input_video',
+            '-y',
             '-vf', `fps=1/${interval}${scaleFilter ? ',' + scaleFilter : ''}`,
             '-q:v', '1', // High quality JPEG
-            'frame_%05d.jpg'
+            '/frame_%05d.jpg'
           ];
           
           // Log the command
@@ -651,7 +652,7 @@
                 
                 // Update time remaining with a more accurate calculation
                 const elapsedTime = (Date.now() - startTime) / 1000;
-                if (overallProgress > 0) {
+                if (overallProgress > 0 && overallProgress < 1) {
                   const estimatedTotalTime = elapsedTime / overallProgress;
                   const remainingTime = estimatedTotalTime - elapsedTime;
                   timeRemaining.textContent = `Estimated time remaining: ${formatTime(remainingTime)}`;
@@ -688,10 +689,6 @@
         progressText.textContent = '100%';
         timeRemaining.textContent = 'Completed';
         currentOperation.textContent = 'All frames extracted successfully';
-        
-        // Play success sound (optional)
-        const audio = new Audio('data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA/+M4wAAAAAAAAAAAAEluZm8AAAAPAAAAAwAAAbgAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVgAAAAAAAAAAAAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/+MYxAAME3UBLgAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/+MYxA0M03UBLgAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV');
-        audio.play().catch(e => console.log('Could not play success sound:', e));
         
         // Show completion modal
         completionMessage.classList.remove('hidden');
