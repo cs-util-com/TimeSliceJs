@@ -367,15 +367,21 @@
             let currentTime = 0;
             while (currentTime < duration) {
                 const outputFilename = `frame_${currentTime.toFixed(2)}s.jpg`;
+                // Check if a file with the same name already exists (and skip if it does)
                 try {
-                    await extractFrame(inputFilename, currentTime, outputFilename);
-                    const frameData = await ffmpeg.readFile(outputFilename);
-                    const success = await saveFrameToFolder(frameData, outputFilename);
-                    if (success) savedFiles.push(outputFilename);
-                    await ffmpeg.deleteFile(outputFilename);
-                } catch (err) {
-                    logError(`Extraction stopped at ${currentTime.toFixed(2)}s`, err);
-                    break;
+                    await directoryHandle.getFileHandle(outputFilename, { create: false });
+                    console.log(`Skipping existing frame: ${outputFilename}`);
+                } catch {
+                    try {
+                        await extractFrame(inputFilename, currentTime, outputFilename);
+                        const frameData = await ffmpeg.readFile(outputFilename);
+                        const success = await saveFrameToFolder(frameData, outputFilename);
+                        if (success) savedFiles.push(outputFilename);
+                        await ffmpeg.deleteFile(outputFilename);
+                    } catch (err) {
+                        logError(`Extraction stopped at ${currentTime.toFixed(2)}s`, err);
+                        break;
+                    }
                 }
                 currentTime += 1 / fps;
             }
