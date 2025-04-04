@@ -74,7 +74,7 @@
     // - ffmpeg-core.wasm (from @ffmpeg/core/dist/esm/)
     // in the './ffmpeg-assets/' directory relative to index.html
     const ffmpegPath = './ffmpeg-assets/index.js';
-    const corePath = './ffmpeg-assets/ffmpeg-core.js';
+    const corePath = './ffmpeg-core.js';
     const workerPath = './worker.js';
 
     try {
@@ -163,7 +163,7 @@
       if (err.message && (err.message.includes("import") || err.message.includes("Failed to fetch dynamically imported module"))) {
           statusElement.textContent = "Error importing local FFmpeg library. Check path/file existence (using index.js).";
       } else if (statusElement.textContent.includes("Loading")) {
-          statusElement.textContent = "Error loading FFmpeg core/worker. Check local paths (worker path should be relative to index.js).";
+          statusElement.textContent = "Error loading FFmpeg core/worker. Check local paths (core & worker paths should be relative to index.js).";
       } else {
           statusElement.textContent = "Error during processing. Check error log.";
       }
