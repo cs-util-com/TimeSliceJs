@@ -506,6 +506,7 @@
         extractionInProgress = true;
         progressSection.classList.remove('hidden');
         startExtractionBtn.disabled = true;
+        errorLogElement.classList.add('hidden'); // Hide previous errors
         
         // Get extraction parameters
         const interval = parseFloat(document.getElementById('interval').value) || 0.5;
@@ -514,6 +515,8 @@
         // Estimate total frames and warn if too many
         const totalDuration = await estimateTotalDuration();
         const estimatedFrames = Math.ceil(totalDuration / interval);
+        console.log(`Estimated total duration: ${totalDuration}s, frames: ${estimatedFrames}`);
+        
         if (estimatedFrames > 10000) {
           const confirmContinue = confirm(
             `Warning: This will generate approximately ${estimatedFrames} frames. ` +
@@ -538,10 +541,30 @@
           const videoPrefix = `video_${String(i + 1).padStart(2, '0')}`;
           
           statusElement.textContent = `Processing video ${i + 1} of ${videoFiles.length}...`;
+          currentOperation.textContent = `Loading video: ${file.name}`;
           
           // Load video into ffmpeg
+          console.log(`Loading video ${i+1}/${videoFiles.length}: ${file.name}`);
           const videoData = new Uint8Array(await file.arrayBuffer());
           await ffmpeg.writeFile('input_video', videoData);
+          
+          // Get video duration using ffprobe
+          let videoDuration = 0;
+          try {
+            currentOperation.textContent = "Detecting video duration...";
+            await ffmpeg.exec(['-i', 'input_video', '-f', 'null', '-']);
+          } catch (err) {
+            // This will error but output duration info to stderr
+            console.log('Expected ffprobe error:', err);
+            // Try to extract duration from the error message
+            const durationMatch = err.message.match(/Duration: (\d{2}):(\d{2}):(\d{2})\.(\d{2})/);
+            if (durationMatch) {
+              const [_, hours, minutes, seconds, centiseconds] = durationMatch;
+              videoDuration = parseInt(hours) * 3600 + parseInt(minutes) * 60 + 
+                             parseInt(seconds) + parseInt(centiseconds) / 100;
+              console.log(`Detected video duration: ${videoDuration}s`);
+            }
+          }
           
           // Set resolution parameters
           let scaleFilter = '';
@@ -563,46 +586,94 @@
             'frame_%05d.jpg'
           ];
           
+          // Log the command
+          console.log('Running FFmpeg command:', ffmpegCommand.join(' '));
+          currentOperation.textContent = "Extracting frames with FFmpeg...";
+          
           // Execute ffmpeg command
           await ffmpeg.exec(ffmpegCommand);
-          
-          // Prepare output directory for writing
-          const framesDirectory = await selectedFolderHandle.getDirectoryHandle(
-            `${videoPrefix}_frames`,
-            { create: true }
-          );
+          console.log('FFmpeg extraction complete');
           
           // List output files
+          currentOperation.textContent = "Getting extracted frames...";
           const outputFiles = await ffmpeg.listDir('/');
           const frameFiles = outputFiles.filter(file => file.startsWith('frame_') && file.endsWith('.jpg'));
+          console.log(`Found ${frameFiles.length} extracted frames`);
           
-          // Write frames to the selected folder with proper naming
+          if (frameFiles.length === 0) {
+            throw new Error("No frames were extracted. Check video format or interval settings.");
+          }
+          
+          // Prepare frame count for progress tracking
+          const totalFrames = frameFiles.length;
+          let framesProcessed = 0;
+          
+          // Write frames directly to the selected folder
+          currentOperation.textContent = `Writing ${frameFiles.length} frames to disk...`;
+          
           for (const frameFile of frameFiles) {
-            // Extract frame number from filename
-            const frameNumber = parseInt(frameFile.match(/frame_(\d+)\.jpg/)[1]);
-            
-            // Calculate the time in the video for this frame
-            const frameTime = (frameNumber - 1) * interval;
-            const timeString = formatTimeForFilename(frameTime);
-            
-            // New filename format: video_01__00-00-01.500.jpg
-            const newFilename = `${videoPrefix}__${timeString}.jpg`;
-            
-            // Read frame data and write to folder
-            const frameData = await ffmpeg.readFile(frameFile);
-            const frameFileHandle = await framesDirectory.getFileHandle(newFilename, { create: true });
-            const writable = await frameFileHandle.createWritable();
-            await writable.write(frameData);
-            await writable.close();
-            
-            // Delete temporary frame file
-            await ffmpeg.deleteFile(frameFile);
+            try {
+              // Extract frame number from filename using a more robust regex
+              const frameNumberMatch = frameFile.match(/frame_(\d+)\.jpg/);
+              if (!frameNumberMatch) {
+                console.warn(`Could not parse frame number from ${frameFile}, skipping`);
+                continue;
+              }
+              
+              const frameNumber = parseInt(frameNumberMatch[1]);
+              
+              // Calculate the time in the video for this frame
+              const frameTime = (frameNumber - 1) * interval;
+              const timeString = formatTimeForFilename(frameTime);
+              
+              // New filename format: video_01__00-00-01.500.jpg
+              const newFilename = `${videoPrefix}__${timeString}.jpg`;
+              
+              // Read frame data from ffmpeg virtual filesystem
+              const frameData = await ffmpeg.readFile(frameFile);
+              
+              // Write directly to selected folder (no subdirectory)
+              try {
+                const frameFileHandle = await selectedFolderHandle.getFileHandle(newFilename, { create: true });
+                const writable = await frameFileHandle.createWritable();
+                await writable.write(frameData);
+                await writable.close();
+                
+                // Update progress
+                framesProcessed++;
+                const overallProgress = (i / videoFiles.length) + (framesProcessed / totalFrames / videoFiles.length);
+                const percent = Math.round(overallProgress * 100);
+                progressBar.style.width = `${percent}%`;
+                progressText.textContent = `${percent}%`;
+                
+                // Update current operation with frame count
+                currentOperation.textContent = `Writing frame ${framesProcessed}/${totalFrames} to disk...`;
+                
+                // Update time remaining with a more accurate calculation
+                const elapsedTime = (Date.now() - startTime) / 1000;
+                if (overallProgress > 0) {
+                  const estimatedTotalTime = elapsedTime / overallProgress;
+                  const remainingTime = estimatedTotalTime - elapsedTime;
+                  timeRemaining.textContent = `Estimated time remaining: ${formatTime(remainingTime)}`;
+                }
+              } catch (writeErr) {
+                console.error(`Error writing frame ${newFilename}:`, writeErr);
+                throw new Error(`Failed to write frame ${newFilename}: ${writeErr.message}`);
+              }
+              
+              // Delete temporary frame file to save memory
+              await ffmpeg.deleteFile(frameFile);
+            } catch (frameErr) {
+              console.error(`Error processing frame ${frameFile}:`, frameErr);
+              // Continue with other frames
+            }
           }
           
           totalFramesExtracted += frameFiles.length;
           
           // Clear input video to save memory
           await ffmpeg.deleteFile('input_video');
+          console.log(`Completed processing video ${i+1}/${videoFiles.length}`);
         }
         
         // Calculate total time taken
@@ -616,6 +687,7 @@
         progressBar.style.width = '100%';
         progressText.textContent = '100%';
         timeRemaining.textContent = 'Completed';
+        currentOperation.textContent = 'All frames extracted successfully';
         
         // Play success sound (optional)
         const audio = new Audio('data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA/+M4wAAAAAAAAAAAAEluZm8AAAAPAAAAAwAAAbgAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVgAAAAAAAAAAAAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/+MYxAAME3UBLgAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/+MYxA0M03UBLgAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV');
@@ -634,11 +706,46 @@
     
     // Estimate total duration of all videos
     async function estimateTotalDuration() {
-      // For now, return a reasonable default as actual duration calculation is complex
-      // In a real implementation, you'd use ffprobe on each video
-      return videoFiles.length * 60; // Assume 1 minute per video as estimation
+      // Try to get more accurate duration
+      let totalDuration = 0;
+      
+      try {
+        for (let i = 0; i < videoFiles.length; i++) {
+          const file = videoFiles[i];
+          // For small videos, we can try to load them and get duration
+          if (file.size < 100 * 1024 * 1024) { // Less than 100MB
+            const videoData = new Uint8Array(await file.arrayBuffer());
+            await ffmpeg.writeFile('temp_duration_video', videoData);
+            
+            try {
+              await ffmpeg.exec(['-i', 'temp_duration_video', '-f', 'null', '-']);
+            } catch (err) {
+              // This will error but output duration info to stderr
+              const durationMatch = err.message.match(/Duration: (\d{2}):(\d{2}):(\d{2})\.(\d{2})/);
+              if (durationMatch) {
+                const [_, hours, minutes, seconds, centiseconds] = durationMatch;
+                const duration = parseInt(hours) * 3600 + parseInt(minutes) * 60 + 
+                                parseInt(seconds) + parseInt(centiseconds) / 100;
+                totalDuration += duration;
+              } else {
+                totalDuration += 60; // Default 1 minute if we can't determine
+              }
+            }
+            
+            await ffmpeg.deleteFile('temp_duration_video');
+          } else {
+            // For large files, just use default estimate
+            totalDuration += 60; // Assume 1 minute per video
+          }
+        }
+      } catch (err) {
+        console.warn('Error estimating duration:', err);
+        totalDuration = videoFiles.length * 60; // Fallback to default
+      }
+      
+      return totalDuration || (videoFiles.length * 60);
     }
-    
+
     // Format time in seconds to HH:MM:SS format
     function formatTime(seconds) {
       const hrs = Math.floor(seconds / 3600);
@@ -673,6 +780,7 @@
       errorLogElement.textContent += `\n[Error] ${errorMsg}\n---------------\n`;
       errorLogElement.classList.remove('hidden');
       statusElement.textContent = "An error occurred. Check error log.";
+      currentOperation.textContent = "Processing failed: " + err.message;
     }
     
     // Register service worker for PWA
