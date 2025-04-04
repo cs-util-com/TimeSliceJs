@@ -415,14 +415,34 @@
             }
 
             enableExtractButton(false);
-            updateStatus('Reading video file...');
+            updateStatus('Reading video files...');
             resetUI();
 
             const files = Array.from(videoInput.files);
+            let processedCount = 0;
+            let failedCount = 0;
+            
             for (let i = 0; i < files.length; i++) {
-                await processFrames(files[i], i + 1);
+                try {
+                    updateStatus(`Processing video ${i + 1} of ${files.length}: ${files[i].name}`);
+                    await processFrames(files[i], i + 1);
+                    processedCount++;
+                } catch (error) {
+                    logError(`Failed to process video ${i + 1}: ${files[i].name}`, error);
+                    failedCount++;
+                    // Continue with the next video
+                }
             }
 
+            // Final status update with summary
+            if (processedCount > 0 && failedCount === 0) {
+                updateStatus(`All ${processedCount} videos processed successfully!`);
+            } else if (processedCount > 0 && failedCount > 0) {
+                updateStatus(`Processing complete: ${processedCount} videos succeeded, ${failedCount} videos failed.`);
+            } else if (processedCount === 0 && failedCount > 0) {
+                updateStatus(`Failed to process all ${failedCount} videos.`);
+            }
+            
             enableExtractButton();
         }
 
