@@ -25,6 +25,20 @@
                    class="block w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 cursor-pointer focus:outline-none p-2" />
         </div>
 
+        <!-- Folder Selection -->
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Output Folder:</label>
+            <div class="flex items-center space-x-2">
+                <button id="folderSelectButton" 
+                        class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                    Select Folder
+                </button>
+                <div id="selectedFolder" class="text-sm text-gray-500 truncate flex-1">
+                    No folder selected
+                </div>
+            </div>
+        </div>
+
         <!-- Action Button -->
         <button id="extractButton" disabled
                 class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed">
@@ -34,9 +48,16 @@
         <!-- Status Display -->
         <div id="status" class="mt-4 text-center text-gray-600 font-medium">Initializing...</div>
 
-        <!-- Output Links Container -->
-        <div id="outputLinks" class="mt-4 space-y-2">
-            <!-- Download links will appear here -->
+        <!-- Output Container -->
+        <div id="outputContainer" class="mt-4">
+            <div id="savedFilesInfo" class="hidden p-3 bg-green-50 border border-green-300 rounded-md text-green-800">
+                <!-- Saved files information will appear here -->
+            </div>
+        </div>
+
+        <!-- Output Links Container (kept for compatibility) -->
+        <div id="outputLinks" class="mt-4 space-y-2 hidden">
+            <!-- Download links will appear here (hidden but kept for backward compatibility) -->
         </div>
 
         <!-- Error Log -->
@@ -52,8 +73,11 @@
         // --- DOM Elements ---
         const videoInput = document.getElementById('videoInput');
         const extractButton = document.getElementById('extractButton');
+        const folderSelectButton = document.getElementById('folderSelectButton');
+        const selectedFolderElement = document.getElementById('selectedFolder');
         const statusElement = document.getElementById('status');
         const outputLinksContainer = document.getElementById('outputLinks');
+        const savedFilesInfo = document.getElementById('savedFilesInfo');
         const errorContainer = document.getElementById('errorContainer');
         const errorLogElement = document.getElementById('errorLog');
 
@@ -63,6 +87,7 @@
         const workerPath = './worker.js';         // Relative path to worker.js (ESM)
 
         let ffmpeg = null; // To hold the FFmpeg instance
+        let directoryHandle = null; // To hold the directory handle
 
         // --- Helper Functions ---
         function updateStatus(message) {
@@ -83,16 +108,34 @@
         }
 
         function enableExtractButton(enabled = true) {
-            extractButton.disabled = !enabled;
-            extractButton.textContent = enabled ? 'Extract Frames' : 'Processing...';
+            extractButton.disabled = !enabled || !directoryHandle || videoInput.files.length === 0;
+            
+            if (ffmpeg && ffmpeg.loaded) {
+                if (!directoryHandle) {
+                    extractButton.textContent = 'Select Output Folder First';
+                } else if (videoInput.files.length === 0) {
+                    extractButton.textContent = 'Select Video File First';
+                } else {
+                    extractButton.textContent = enabled ? 'Extract Frames' : 'Processing...';
+                }
+            } else {
+                extractButton.textContent = 'Load FFmpeg First';
+            }
         }
 
         function resetUI() {
             outputLinksContainer.innerHTML = '';
+            savedFilesInfo.innerHTML = '';
+            savedFilesInfo.classList.add('hidden');
             errorLogElement.textContent = '';
             errorContainer.hidden = true;
         }
 
+        function updateButtonState() {
+            enableExtractButton();
+        }
+
+        // For backward compatibility (kept but hidden)
         function createDownloadLink(data, filename) {
             const blob = new Blob([data.buffer], { type: 'image/jpeg' });
             const url = URL.createObjectURL(blob);
@@ -102,6 +145,118 @@
             a.textContent = `Download ${filename}`;
             a.className = 'block w-full text-center bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded cursor-pointer';
             outputLinksContainer.appendChild(a);
+        }
+
+        // --- Folder Selection ---
+        async function selectFolder() {
+            try {
+                if (!('showDirectoryPicker' in window)) {
+                    logError('Your browser does not support the File System Access API. Please use Chrome/Edge or another compatible browser.');
+                    return null;
+                }
+                
+                // Request the directory from the user
+                directoryHandle = await window.showDirectoryPicker();
+                
+                // Get a user-friendly name for the folder
+                const folderName = directoryHandle.name || 'Selected Folder';
+                selectedFolderElement.textContent = folderName;
+                
+                console.log(`Folder selected: ${folderName}`);
+                updateStatus(`Output folder selected: ${folderName}`);
+                updateButtonState();
+                
+                return folderName;
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log('Folder selection was cancelled by user');
+                    updateStatus('Folder selection cancelled');
+                } else {
+                    logError('Error selecting folder:', error);
+                }
+                return null;
+            }
+        }
+
+        // Check if we have permission to the given directory handle
+        async function verifyPermission(directoryHandle, writeAccess) {
+            try {
+                // Check if permission was already granted
+                const opts = { mode: writeAccess ? 'readwrite' : 'read' };
+                
+                // First check permission state without prompting
+                const state = await directoryHandle.queryPermission(opts);
+                if (state === 'granted') {
+                    return true;
+                }
+                
+                // Request permission if needed
+                const requestResult = await directoryHandle.requestPermission(opts);
+                return requestResult === 'granted';
+            } catch (e) {
+                console.warn('Permission verification error:', e);
+                return false;
+            }
+        }
+
+        // Write file to the selected directory
+        async function writeFile(fileHandle, blob) {
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+        }
+
+        // Save frame to the selected directory
+        async function saveFrameToFolder(frameData, filename) {
+            if (!directoryHandle) {
+                logError('No directory selected.');
+                return false;
+            }
+
+            // Verify we have write permission
+            if (await verifyPermission(directoryHandle, true) === false) {
+                logError('Permission to write to folder was denied.');
+                return false;
+            }
+
+            try {
+                const fileHandle = await directoryHandle.getFileHandle(filename, { create: true });
+                const blob = new Blob([frameData.buffer], { type: 'image/jpeg' });
+                await writeFile(fileHandle, blob);
+                console.log(`Saved ${filename} to folder`);
+                return true;
+            } catch (error) {
+                logError(`Error saving ${filename} to folder:`, error);
+                return false;
+            }
+        }
+
+        // Display saved files information
+        function displaySavedFilesInfo(savedFiles) {
+            savedFilesInfo.innerHTML = '';
+            savedFilesInfo.classList.remove('hidden');
+            
+            const heading = document.createElement('h3');
+            heading.className = 'text-lg font-semibold text-green-700 mb-2';
+            heading.textContent = 'Frames Saved Successfully:';
+            savedFilesInfo.appendChild(heading);
+            
+            const filesList = document.createElement('ul');
+            filesList.className = 'list-disc pl-5';
+            
+            savedFiles.forEach(file => {
+                const item = document.createElement('li');
+                item.textContent = file;
+                item.className = 'mb-1';
+                filesList.appendChild(item);
+            });
+            
+            savedFilesInfo.appendChild(filesList);
+            
+            const folderInfo = document.createElement('p');
+            folderInfo.className = 'mt-2 text-sm';
+            folderInfo.textContent = `Saved to: ${selectedFolderElement.textContent}`;
+            savedFilesInfo.appendChild(folderInfo);
         }
 
         // --- FFmpeg Operations ---
@@ -127,8 +282,8 @@
                 });
                 console.log("FFmpeg core loaded successfully.");
 
-                updateStatus("FFmpeg ready. Select a video file.");
-                enableExtractButton();
+                updateStatus("FFmpeg ready. Select a video file and output folder.");
+                updateButtonState();
 
             } catch (err) {
                  logError("Failed to initialize FFmpeg. Check console and asset paths.", err);
@@ -152,6 +307,8 @@
                 { timestamp: 5, filename: 'frame_05s.jpg' }
             ];
             
+            const savedFiles = [];
+            
             try {
                 // Load video file
                 const data = new Uint8Array(await file.arrayBuffer());
@@ -163,17 +320,27 @@
                     await extractFrame(inputFilename, frame.timestamp, frame.filename);
                 }
                 
-                // Read and create download links
-                updateStatus('Reading extracted frames...');
+                // Read and save frames to selected folder
+                updateStatus('Reading extracted frames and saving to folder...');
                 for (const frame of frames) {
                     const frameData = await ffmpeg.readFile(frame.filename);
-                    createDownloadLink(frameData, frame.filename);
+                    const success = await saveFrameToFolder(frameData, frame.filename);
+                    if (success) {
+                        savedFiles.push(frame.filename);
+                    }
                     await ffmpeg.deleteFile(frame.filename);
                 }
                 
                 // Clean up
                 await ffmpeg.deleteFile(inputFilename);
-                updateStatus('Extraction complete! Click links below to download frames.');
+                
+                // Display results
+                if (savedFiles.length > 0) {
+                    displaySavedFilesInfo(savedFiles);
+                    updateStatus('Extraction complete! Frames saved to the selected folder.');
+                } else {
+                    updateStatus('No frames were successfully saved.');
+                }
                 
             } catch (err) {
                 throw err;
@@ -188,6 +355,10 @@
             }
             if (videoInput.files.length === 0) {
                 updateStatus("Please select a video file first.");
+                return;
+            }
+            if (!directoryHandle) {
+                updateStatus("Please select an output folder first.");
                 return;
             }
 
@@ -207,6 +378,8 @@
 
         // --- Event Listeners ---
         extractButton.addEventListener('click', extractFrames);
+        folderSelectButton.addEventListener('click', selectFolder);
+        videoInput.addEventListener('change', updateButtonState);
 
         // --- Start Initialization ---
         initializeFFmpeg();
