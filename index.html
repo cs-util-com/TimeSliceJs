@@ -559,21 +559,39 @@
     }
 
     function checkCanStart() {
-      const interval = parseFloat(intervalInput.value);
+      const intervalInputVal = intervalInput.value; // Get value explicitly
+      const interval = parseFloat(intervalInputVal);
       const res = resolutionSelect.value;
-      const customW = parseInt(customWidthInput.value);
-      const customH = parseInt(customHeightInput.value);
+      const customWInputVal = customWidthInput.value; // Get value explicitly
+      const customHInputVal = customHeightInput.value; // Get value explicitly
+      const customW = parseInt(customWInputVal);
+      const customH = parseInt(customHInputVal);
 
-      const isValidInterval = interval > 0;
+      const isValidInterval = !isNaN(interval) && interval > 0 && isFinite(interval);
       // Custom dimensions are only required if 'custom' is selected
       const isValidCustomRes = res !== 'custom' || (!isNaN(customW) && customW > 0 && !isNaN(customH) && customH > 0);
 
+      // --- BEGIN DEBUG LOGS ---
+      console.log('--- checkCanStart() ---');
+      console.log(`isFfmpegLoaded: ${isFfmpegLoaded}`);
+      console.log(`isProcessing: ${isProcessing} (!isProcessing: ${!isProcessing})`);
+      console.log(`filesToProcess.length: ${filesToProcess.length} (> 0: ${filesToProcess.length > 0})`);
+      console.log(`outputDirectoryHandle:`, outputDirectoryHandle, `( !== null: ${outputDirectoryHandle !== null})`);
+      console.log(`Interval Input: "${intervalInputVal}", Parsed: ${interval}, isValidInterval: ${isValidInterval}`);
+      console.log(`Resolution Mode: "${res}"`);
+      console.log(`Custom W Input: "${customWInputVal}", Parsed: ${customW}`);
+      console.log(`Custom H Input: "${customHInputVal}", Parsed: ${customH}`);
+      console.log(`isValidCustomRes: ${isValidCustomRes}`);
+      // --- END DEBUG LOGS ---
+
       const canStart = isFfmpegLoaded &&
-                       !isProcessing &&
-                       filesToProcess.length > 0 &&
-                       outputDirectoryHandle !== null &&
-                       isValidInterval &&
-                       isValidCustomRes;
+                      !isProcessing &&
+                      filesToProcess.length > 0 &&
+                      outputDirectoryHandle !== null &&
+                      isValidInterval &&
+                      isValidCustomRes;
+
+      console.log(`>>> Final canStart: ${canStart}`); // Log final result
 
       startBtn.disabled = !canStart;
 
@@ -583,7 +601,7 @@
         else if (filesToProcess.length === 0) startBtn.title = "Add at least one video file.";
         else if (outputDirectoryHandle === null) startBtn.title = "Select an output folder.";
         else if (!isValidInterval) startBtn.title = "Enter a valid interval (e.g., 0.5).";
-        else if (!isValidCustomRes) startBtn.title = "Enter valid custom dimensions.";
+        else if (!isValidCustomRes && res === 'custom') startBtn.title = "Enter valid positive custom dimensions (Width and Height)."; // More specific tooltip
         else startBtn.title = ""; // Clear tooltip if enabled
     }
 
