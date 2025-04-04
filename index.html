@@ -108,18 +108,20 @@
         }
 
         function enableExtractButton(enabled = true) {
-            extractButton.disabled = !enabled || !directoryHandle || videoInput.files.length === 0;
+            const hasFfmpeg = ffmpeg && ffmpeg.loaded;
+            const hasFolder = directoryHandle !== null;
+            const hasVideo = videoInput.files.length > 0;
             
-            if (ffmpeg && ffmpeg.loaded) {
-                if (!directoryHandle) {
-                    extractButton.textContent = 'Select Output Folder First';
-                } else if (videoInput.files.length === 0) {
-                    extractButton.textContent = 'Select Video File First';
-                } else {
-                    extractButton.textContent = enabled ? 'Extract Frames' : 'Processing...';
-                }
-            } else {
+            extractButton.disabled = !enabled || !hasFfmpeg || !hasFolder || !hasVideo;
+            
+            if (!hasFfmpeg) {
                 extractButton.textContent = 'Load FFmpeg First';
+            } else if (!hasFolder) {
+                extractButton.textContent = 'Select Output Folder First';
+            } else if (!hasVideo) {
+                extractButton.textContent = 'Select Video File First';
+            } else {
+                extractButton.textContent = enabled ? 'Extract Frames' : 'Processing...';
             }
         }
 
@@ -160,13 +162,29 @@
                 
                 // Get a user-friendly name for the folder
                 const folderName = directoryHandle.name || 'Selected Folder';
-                selectedFolderElement.textContent = folderName;
                 
-                console.log(`Folder selected: ${folderName}`);
-                updateStatus(`Output folder selected: ${folderName}`);
+                // Request write permission immediately after selection
+                updateStatus(`Requesting permission to write to ${folderName}...`);
+                const hasPermission = await verifyPermission(directoryHandle, true);
+                
+                if (hasPermission) {
+                    selectedFolderElement.textContent = folderName;
+                    selectedFolderElement.classList.remove('text-gray-500');
+                    selectedFolderElement.classList.add('text-green-600');
+                    
+                    console.log(`Folder selected with write permission: ${folderName}`);
+                    updateStatus(`Output folder ready: ${folderName}`);
+                } else {
+                    selectedFolderElement.textContent = `${folderName} (No write permission)`;
+                    selectedFolderElement.classList.remove('text-green-600');
+                    selectedFolderElement.classList.add('text-red-500');
+                    
+                    console.warn(`Folder selected but write permission denied: ${folderName}`);
+                    updateStatus(`Write permission denied for selected folder`);
+                }
+                
                 updateButtonState();
-                
-                return folderName;
+                return hasPermission ? folderName : null;
             } catch (error) {
                 if (error.name === 'AbortError') {
                     console.log('Folder selection was cancelled by user');
@@ -179,19 +197,20 @@
         }
 
         // Check if we have permission to the given directory handle
-        async function verifyPermission(directoryHandle, writeAccess) {
+        async function verifyPermission(fileHandle, writeAccess) {
             try {
                 // Check if permission was already granted
                 const opts = { mode: writeAccess ? 'readwrite' : 'read' };
                 
                 // First check permission state without prompting
-                const state = await directoryHandle.queryPermission(opts);
+                const state = await fileHandle.queryPermission(opts);
                 if (state === 'granted') {
                     return true;
                 }
                 
                 // Request permission if needed
-                const requestResult = await directoryHandle.requestPermission(opts);
+                updateStatus('Waiting for permission...');
+                const requestResult = await fileHandle.requestPermission(opts);
                 return requestResult === 'granted';
             } catch (e) {
                 console.warn('Permission verification error:', e);
@@ -206,16 +225,10 @@
             await writable.close();
         }
 
-        // Save frame to the selected directory
+        // Save frame to the selected directory - now only needs to verify the permission once at beginning
         async function saveFrameToFolder(frameData, filename) {
             if (!directoryHandle) {
                 logError('No directory selected.');
-                return false;
-            }
-
-            // Verify we have write permission
-            if (await verifyPermission(directoryHandle, true) === false) {
-                logError('Permission to write to folder was denied.');
                 return false;
             }
 
@@ -226,7 +239,18 @@
                 console.log(`Saved ${filename} to folder`);
                 return true;
             } catch (error) {
-                logError(`Error saving ${filename} to folder:`, error);
+                // If we get a permission error at this point, it likely means permission was revoked
+                if (error.name === 'SecurityError' || error.name === 'NotAllowedError') {
+                    logError(`Permission to write to folder was lost. Please select folder again.`, error);
+                    // Reset directory handle to force re-selection
+                    directoryHandle = null;
+                    selectedFolderElement.textContent = 'No folder selected (permission lost)';
+                    selectedFolderElement.classList.remove('text-green-600');
+                    selectedFolderElement.classList.add('text-red-500');
+                    updateButtonState();
+                } else {
+                    logError(`Error saving ${filename} to folder:`, error);
+                }
                 return false;
             }
         }
@@ -310,28 +334,45 @@
             const savedFiles = [];
             
             try {
+                // Verify we still have permission before starting process
+                if (!directoryHandle || !(await verifyPermission(directoryHandle, true))) {
+                    if (directoryHandle) {
+                        logError('Write permission for the selected folder was denied. Please select folder again.');
+                        directoryHandle = null;
+                        selectedFolderElement.textContent = 'No folder selected (permission denied)';
+                        selectedFolderElement.classList.remove('text-green-600');
+                        selectedFolderElement.classList.add('text-red-500');
+                    } else {
+                        logError('No directory selected. Please select an output folder.');
+                    }
+                    updateButtonState();
+                    return;
+                }
+                
                 // Load video file
                 const data = new Uint8Array(await file.arrayBuffer());
                 updateStatus(`Writing ${inputFilename} to virtual filesystem...`);
                 await ffmpeg.writeFile(inputFilename, data);
                 
-                // Extract frames
+                // Extract and save frames one by one to minimize memory usage
                 for (const frame of frames) {
+                    // Extract the frame
                     await extractFrame(inputFilename, frame.timestamp, frame.filename);
-                }
-                
-                // Read and save frames to selected folder
-                updateStatus('Reading extracted frames and saving to folder...');
-                for (const frame of frames) {
+                    
+                    // Immediately read and save to folder
+                    updateStatus(`Saving ${frame.filename} to folder...`);
                     const frameData = await ffmpeg.readFile(frame.filename);
                     const success = await saveFrameToFolder(frameData, frame.filename);
+                    
                     if (success) {
                         savedFiles.push(frame.filename);
                     }
+                    
+                    // Delete from ffmpeg virtual filesystem right away
                     await ffmpeg.deleteFile(frame.filename);
                 }
                 
-                // Clean up
+                // Clean up input file
                 await ffmpeg.deleteFile(inputFilename);
                 
                 // Display results
