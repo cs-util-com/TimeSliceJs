@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>ffmpeg.wasm Demo – WebM to MP4 (UMD - Self-Hosted)</title>
-  <!-- Scripts are loaded via local UMD build -->
+  <title>ffmpeg.wasm Demo – WebM to MP4 (ESM - Self-Hosted)</title>
+  <!-- Scripts are loaded via local ES Module import -->
   <style>
     body {
       font-family: sans-serif;
@@ -37,7 +37,7 @@
   </style>
 </head>
 <body>
-  <h1>WebM to MP4 Transcoder (UMD Load - Self-Hosted Assets)</h1>
+  <h1>WebM to MP4 Transcoder (ESM Load - Self-Hosted Assets)</h1>
   <div id="status">Initializing...</div>
   <progress id="progressBar" value="0" max="100"></progress>
   <video id="outputVideo" controls></video>
@@ -45,129 +45,128 @@
 ---------------
 </pre>
 
-  <!-- Load the LOCAL UMD build of ffmpeg.wasm -->
-  <!-- Ensure 814.ffmpeg.js and ffmpeg-core.js (UMD versions) are in ./ffmpeg-assets/ -->
-  <script src="./ffmpeg-assets/814.ffmpeg.js"></script> 
+  <!-- REMOVED the UMD script tag and the __webpack_public_path__ script -->
 
-  <script>
-    // Wrap in async IIFE for top-level await in classic script
-    (async () => {
-      const errorLogElement = document.getElementById('errorLog');
-      const statusElement = document.getElementById('status');
+  <!-- Main script reverted to type="module" -->
+  <script type="module">
+    // REMOVED async IIFE wrapper as it's not needed for type=module
+    const errorLogElement = document.getElementById('errorLog');
+    const statusElement = document.getElementById('status');
 
-      // Global error handler
-      window.onerror = function(message, source, lineno, colno, error) {
-        console.error("[Global Error Handler]", message, source, lineno, colno, error);
-        errorLogElement.textContent += `\n[Global Error] ${message}\n  Source: ${source}\n  Line: ${lineno}, Col: ${colno}\n  Error Obj: ${error ? error.stack || error : 'N/A'}\n---------------\n`;
-        if (!statusElement.textContent.startsWith("Error")) {
-            statusElement.textContent = "A critical error occurred. Check error log.";
-        }
-        return false;
-      };
-
-      console.log('Classic script executing...');
-      statusElement.textContent = "Checking FFmpeg library (Local UMD)...";
-
-      // --- Define LOCAL path for the CORE --- 
-      // IMPORTANT: Ensure you have the UMD versions of:
-      // - 814.ffmpeg.js    (usually from @ffmpeg/ffmpeg/dist/umd/)
-      // - ffmpeg-core.js   (usually from @ffmpeg/core/dist/umd/)
-      // - ffmpeg-core.wasm (usually from @ffmpeg/core/dist/umd/)
-      // in the './ffmpeg-assets/' directory relative to index.html
-      // Note: worker.js is typically NOT needed for UMD single-thread setups
-      const corePath = './ffmpeg-assets/ffmpeg-core.js';
-
-      try {
-        // --- Access FFmpeg library from global scope (loaded by script tag) ---
-        if (typeof FFmpeg === 'undefined') {
-          throw new Error("FFmpeg library not loaded. Check if 814.ffmpeg.js is present and loaded correctly.");
-        }
-        const { createFFmpeg, fetchFile } = FFmpeg;
-        console.log('FFmpeg UMD library found in global scope.');
-        statusElement.textContent = "FFmpeg library loaded. Initializing...";
-
-        // --- Instantiate the FFmpeg class ---
-        // Pass the CORE path explicitly
-        const ffmpeg = createFFmpeg({ 
-          log: true, // Keep logging enabled for debugging
-          corePath: corePath 
-        });
-        console.log('FFmpeg instance created.');
-
-        // --- Attach event handlers ---
-        const progressBar = document.getElementById('progressBar');
-        ffmpeg.on('progress', ({ progress, time }) => {
-          // progress is 0-1, adjust for display
-          const percent = Math.round(progress * 100);
-          progressBar.value = percent;
-          if (!statusElement.textContent.includes("complete") && !statusElement.textContent.includes("Error")) {
-               // Check time exists and format it
-               const timeStr = time ? ` (Time: ${Math.round(time / 1000)}s)` : '';
-               statusElement.textContent = `Processing... ${percent}%${timeStr}`;
-          }
-        });
-        ffmpeg.on('log', ({ type, message }) => {
-          console.log(`[ffmpeg ${type}] ${message}`); // Log to console
-        });
-
-        // --- Load the core using LOCAL path ---
-        statusElement.textContent = "Loading locally hosted ffmpeg.wasm core (may take time)...";
-        console.log(`Loading FFmpeg core via ffmpeg.load() using local coreURL: ${corePath}...`);
-        // No longer need to pass coreURL in load if specified in createFFmpeg
-        await ffmpeg.load(); 
-        console.log('FFmpeg core loaded successfully.');
-        statusElement.textContent = "FFmpeg core loaded.";
-
-        // --- Start FFmpeg processing ---
-        const videoEl = document.getElementById('outputVideo');
-
-        statusElement.textContent = "Fetching input video file...";
-        console.log('Fetching input video...');
-        // Use standard fetch for the video file.
-        const videoResponse = await fetch(
-          "https://raw.githubusercontent.com/ffmpegwasm/testdata/master/Big_Buck_Bunny_180_10s.webm"
-        );
-        if (!videoResponse.ok) {
-          throw new Error(`Failed to fetch video: ${videoResponse.status} ${videoResponse.statusText}`);
-        }
-        const videoData = new Uint8Array(await videoResponse.arrayBuffer());
-        console.log('Input video fetched successfully');
-
-        await ffmpeg.writeFile('input.webm', videoData);
-        console.log('Input video written to virtual filesystem');
-
-        statusElement.textContent = "Transcoding to MP4 (this may take a moment)...";
-        console.log('Starting transcoding...');
-        await ffmpeg.exec(['-i', 'input.webm', 'output.mp4']);
-        console.log('Transcoding completed');
-
-        const outputData = await ffmpeg.readFile('output.mp4');
-        console.log('Output file read');
-
-        const blob = new Blob([outputData.buffer], { type: 'video/mp4' });
-        const videoURL = URL.createObjectURL(blob);
-
-        videoEl.src = videoURL;
-        console.log('Video source set');
-
-        statusElement.textContent = "Transcoding complete! Click play to view.";
-        progressBar.value = 100;
-
-        console.log('Processing finished.');
-
-      } catch (err) {
-        console.error('Error during FFmpeg operation:', err);
-        const errorMsg = `An error occurred: ${err.stack || err.toString()}`;
-        errorLogElement.textContent += `\n[Error] ${errorMsg}\n---------------\n`;
-        if (err.message && (err.message.includes("FFmpeg library not loaded") || err.message.includes("fetchFile is not a function"))) {
-            statusElement.textContent = "Error loading UMD FFmpeg library. Check path/file existence.";
-        } else if (statusElement.textContent.includes("Loading")) {
-            statusElement.textContent = "Error loading FFmpeg core. Check local path and file existence.";
-        } else {
-            statusElement.textContent = "Error during processing. Check error log.";
-        }
+    // Global error handler
+    window.onerror = function(message, source, lineno, colno, error) {
+      console.error("[Global Error Handler]", message, source, lineno, colno, error);
+      errorLogElement.textContent += `\n[Global Error] ${message}\n  Source: ${source}\n  Line: ${lineno}, Col: ${colno}\n  Error Obj: ${error ? error.stack || error : 'N/A'}\n---------------\n`;
+      if (!statusElement.textContent.startsWith("Error")) {
+          statusElement.textContent = "A critical error occurred. Check error log.";
       }
-    })(); // End of async IIFE
+      return false;
+    };
+
+    console.log('Module script executing...');
+    statusElement.textContent = "Importing FFmpeg library (Local ESM)...";
+
+    // --- Define LOCAL paths for ESM build ---
+    // IMPORTANT: Ensure you have the ESM versions of:
+    // - ffmpeg.js        (from @ffmpeg/ffmpeg/dist/esm/)
+    // - worker.js        (from @ffmpeg/ffmpeg/dist/esm/) <-- Needed for classWorkerURL
+    // - ffmpeg-core.js   (from @ffmpeg/core/dist/esm/)
+    // - ffmpeg-core.wasm (from @ffmpeg/core/dist/esm/)
+    // in the './ffmpeg-assets/' directory relative to index.html
+    const ffmpegPath = './ffmpeg-assets/ffmpeg.js';
+    const corePath = './ffmpeg-assets/ffmpeg-core.js';
+    const workerPath = './ffmpeg-assets/worker.js'; // Path to the ESM worker
+
+    try {
+      // --- Import necessary items from the LOCAL ESM library build ---
+      // Reverted back to dynamic import
+      const { FFmpeg } = await import(ffmpegPath);
+      console.log('FFmpeg ESM module imported successfully.');
+      statusElement.textContent = "FFmpeg library imported. Initializing...";
+
+      // --- Instantiate the FFmpeg class ---
+      // Removed corePath from here, will be specified in load()
+      const ffmpeg = new FFmpeg();
+      console.log('FFmpeg instance created.');
+
+      // --- Attach event handlers ---
+      const progressBar = document.getElementById('progressBar');
+      ffmpeg.on('progress', ({ progress, time }) => {
+        // progress is 0-1, adjust for display
+        const percent = Math.round(progress * 100);
+        progressBar.value = percent;
+        if (!statusElement.textContent.includes("complete") && !statusElement.textContent.includes("Error")) {
+             // Check time exists and format it
+             const timeStr = time ? ` (Time: ${Math.round(time / 1000)}s)` : '';
+             statusElement.textContent = `Processing... ${percent}%${timeStr}`;
+        }
+      });
+      ffmpeg.on('log', ({ type, message }) => {
+        console.log(`[ffmpeg ${type}] ${message}`); // Log to console
+      });
+
+      // --- Load the core AND worker using LOCAL paths ---
+      statusElement.textContent = "Loading locally hosted ffmpeg core & worker (may take time)...";
+      console.log(`Loading FFmpeg core & worker via ffmpeg.load() using local URLs...`);
+      console.log(`  coreURL: ${corePath}`);
+      console.log(`  classWorkerURL: ${workerPath}`);
+      // Provide BOTH coreURL and classWorkerURL
+      await ffmpeg.load({ 
+        coreURL: corePath, 
+        classWorkerURL: workerPath 
+      });
+      console.log('FFmpeg core and worker loaded successfully via ffmpeg.load()');
+      statusElement.textContent = "FFmpeg core loaded.";
+
+      // --- Start FFmpeg processing ---
+      const videoEl = document.getElementById('outputVideo');
+
+      statusElement.textContent = "Fetching input video file...";
+      console.log('Fetching input video...');
+      // Use standard fetch for the video file.
+      const videoResponse = await fetch(
+        "https://raw.githubusercontent.com/ffmpegwasm/testdata/master/Big_Buck_Bunny_180_10s.webm"
+      );
+      if (!videoResponse.ok) {
+        throw new Error(`Failed to fetch video: ${videoResponse.status} ${videoResponse.statusText}`);
+      }
+      const videoData = new Uint8Array(await videoResponse.arrayBuffer());
+      console.log('Input video fetched successfully');
+
+      await ffmpeg.writeFile('input.webm', videoData);
+      console.log('Input video written to virtual filesystem');
+
+      statusElement.textContent = "Transcoding to MP4 (this may take a moment)...";
+      console.log('Starting transcoding...');
+      await ffmpeg.exec(['-i', 'input.webm', 'output.mp4']);
+      console.log('Transcoding completed');
+
+      const outputData = await ffmpeg.readFile('output.mp4');
+      console.log('Output file read');
+
+      const blob = new Blob([outputData.buffer], { type: 'video/mp4' });
+      const videoURL = URL.createObjectURL(blob);
+
+      videoEl.src = videoURL;
+      console.log('Video source set');
+
+      statusElement.textContent = "Transcoding complete! Click play to view.";
+      progressBar.value = 100;
+
+      console.log('Processing finished.');
+
+    } catch (err) {
+      console.error('Error during module import or FFmpeg operation:', err);
+      const errorMsg = `An error occurred: ${err.stack || err.toString()}`;
+      errorLogElement.textContent += `\n[Error] ${errorMsg}\n---------------\n`;
+      if (err.message && err.message.includes("import")) {
+          statusElement.textContent = "Error importing local FFmpeg library. Check path/file existence.";
+      } else if (statusElement.textContent.includes("Loading")) {
+          statusElement.textContent = "Error loading FFmpeg core/worker. Check local paths and file existence.";
+      } else {
+          statusElement.textContent = "Error during processing. Check error log.";
+      }
+    }
   </script>
 </body>
 </html>
