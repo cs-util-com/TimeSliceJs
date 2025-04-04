@@ -2,1511 +2,172 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Video Frame Extractor</title>
-  <!-- PWA Meta Tags -->
-  <meta name="theme-color" content="#111827"> <!-- Tailwind gray-900 -->
-  <link rel="manifest" href="manifest.json"> <!-- External manifest for clarity -->
-
-  <!-- Tailwind CSS via CDN -->
-  <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
-  <script>
-    // Configure Tailwind - Forms plugin is loaded via the CDN URL query param
-    tailwind.config = {
-      darkMode: 'media', // or 'class' if you prefer manual toggling
-      theme: {
-        extend: {},
-      },
-      // No need for the plugins array here when using CDN plugin parameter
-    }
-  </script>
-
-  <!-- Local ffmpeg.wasm assets will be loaded via JS -->
-
+  <title>ffmpeg.wasm Demo – WebM to MP4 (ESM - Self-Hosted)</title>
+  <!-- Scripts are loaded via local ES Module import -->
   <style>
-    /* Basic Styles & Dark Mode */
     body {
       font-family: sans-serif;
-      background-color: #111827; /* gray-900 */
-      color: #d1d5db; /* gray-300 */
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 0 20px;
     }
-    /* Style the file input button */
-     input[type="file"]::-webkit-file-upload-button,
-     input[type="file"]::file-selector-button {
-        /* Tailwind button styles - adjust as needed */
-        padding: 0.5rem 1rem;
-        margin-right: 1rem;
-        font-weight: 500;
-        color: #e5e7eb; /* gray-200 */
-        background-color: #374151; /* gray-700 */
-        border: 1px solid #4b5563; /* gray-600 */
-        border-radius: 0.375rem; /* rounded-md */
-        cursor: pointer;
-        transition: background-color 0.2s ease-in-out;
-     }
-     input[type="file"]::-webkit-file-upload-button:hover,
-     input[type="file"]::file-selector-button:hover {
-        background-color: #4b5563; /* gray-600 */
-     }
-     /* Style placeholder text color for inputs */
-    input::placeholder, textarea::placeholder {
-        color: #6b7280; /* gray-500 */
+    #status {
+      margin: 20px 0;
+      font-weight: bold;
     }
-    progress {
-      accent-color: #3b82f6; /* blue-500 */
+    #progressBar {
+      width: 100%;
+      max-width: 400px;
+      margin: 10px 0;
     }
-    /* Drop zone highlight */
-    .drop-zone-active {
-      border-color: #3b82f6; /* blue-500 */
-      background-color: #1f2937; /* gray-800 */
+    #outputVideo {
+      max-width: 100%;
+      margin: 20px 0;
+    }
+    #errorLog {
+      color: red;
+      white-space: pre-wrap;
+      background: #f8f8f8;
+      padding: 10px;
+      border-radius: 4px;
+      display: block; /* Make sure errors are visible by default */
+      border: 1px solid #ddd;
+      margin-top: 10px;
     }
   </style>
 </head>
-<body class="bg-gray-900 text-gray-300 min-h-screen flex flex-col">
-
-  <header class="bg-gray-800 p-4 shadow-md">
-    <h1 class="text-xl font-semibold text-white">Video Frame Extractor</h1>
-  </header>
-
-  <main class="flex-grow container mx-auto p-4 md:p-6 lg:p-8 flex flex-col md:flex-row gap-6 lg:gap-8">
-
-    <!-- Left Column: Input & Controls -->
-    <section class="md:w-1/2 flex flex-col gap-4">
-      <!-- 1. Video Input -->
-      <div>
-        <label class="block text-sm font-medium text-gray-400 mb-1">1. Add Video Files</label>
-        <div id="dropZone" class="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center cursor-pointer hover:border-gray-500 transition-colors bg-gray-800">
-          <p id="dropZoneText" class="text-gray-500">Drop video files here or click to select</p>
-          <input type="file" id="fileInput" multiple accept="video/*" class="hidden">
-        </div>
-        <ul id="fileList" class="mt-3 text-sm space-y-1">
-          <!-- File list items will be added here -->
-        </ul>
-      </div>
-
-      <!-- 2. Frame Extraction Controls -->
-      <div>
-        <label class="block text-sm font-medium text-gray-400 mb-1">2. Extraction Settings</label>
-        <div class="bg-gray-800 p-4 rounded-lg space-y-3">
-          <div>
-            <label for="interval" class="block text-xs font-medium text-gray-400">Interval (seconds)</label>
-            <input type="number" id="interval" name="interval" value="1" step="0.1" min="0.1" required
-                   class="mt-1 block w-full rounded-md border-gray-600 bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-white placeholder-gray-500">
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-400">Resolution</label>
-            <select id="resolution" name="resolution"
-                    class="mt-1 block w-full rounded-md border-gray-600 bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-white">
-              <option value="full" selected>Full (Original)</option>
-              <option value="half">Half</option>
-              <option value="custom">Custom Dimensions</option>
-            </select>
-          </div>
-          <div id="customDimensions" class="hidden flex gap-2">
-            <input type="number" id="customWidth" name="customWidth" placeholder="Width (px)" min="1" class="block w-1/2 rounded-md border-gray-600 bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-white placeholder-gray-500">
-            <input type="number" id="customHeight" name="customHeight" placeholder="Height (px)" min="1" class="block w-1/2 rounded-md border-gray-600 bg-gray-700 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm text-white placeholder-gray-500">
-          </div>
-        </div>
-      </div>
-
-       <!-- 3. Output Folder -->
-       <div>
-        <label class="block text-sm font-medium text-gray-400 mb-1">3. Select Output Folder</label>
-        <button id="selectFolderBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-500">
-          Select Folder
-        </button>
-        <p id="folderPath" class="mt-2 text-xs text-gray-500 truncate">No folder selected.</p>
-       </div>
-
-       <!-- 4. Start Extraction -->
-       <div>
-          <button id="startBtn" disabled
-                  class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-green-500">
-              Start Extraction
-          </button>
-          <!-- Frame estimate warning will be inserted here -->
-       </div>
-
-    </section>
-
-    <!-- Right Column: Status & Logs -->
-    <section class="md:w-1/2 flex flex-col gap-4">
-      <div>
-        <label class="block text-sm font-medium text-gray-400 mb-1">Status</label>
-        <div id="status" class="bg-gray-800 p-4 rounded-lg min-h-[60px] text-sm flex items-center justify-center">
-          Awaiting input...
-        </div>
-      </div>
-
-      <div>
-          <label for="progressBar" class="block text-sm font-medium text-gray-400 mb-1">Progress</label>
-          <progress id="progressBar" value="0" max="100" class="w-full h-2.5 rounded-full overflow-hidden bg-gray-700"></progress>
-          <p id="progressText" class="text-xs text-gray-500 text-right mt-1">0%</p>
-          <p id="eta" class="text-xs text-gray-500 text-right">ETA: calculating...</p>
-      </div>
-
-       <div>
-          <label class="block text-sm font-medium text-gray-400 mb-1">Video Info</label>
-          <div id="videoInfo" class="bg-gray-800 p-4 rounded-lg min-h-[80px] text-xs space-y-1 overflow-auto max-h-40">
-            <p class="text-gray-500 italic">Drop a video file to see its details here.</p>
-            <!-- Metadata will be added here -->
-          </div>
-       </div>
-
-      <div>
-        <label for="errorLog" class="block text-sm font-medium text-gray-400 mb-1">Logs</label>
-        <pre id="errorLog" class="bg-gray-800 p-3 rounded-lg text-xs whitespace-pre-wrap break-all overflow-auto h-40 border border-gray-700">Console Logs & Errors:
-----------------------
+<body>
+  <h1>WebM to MP4 Transcoder (ESM Load - Self-Hosted Assets)</h1>
+  <div id="status">Initializing...</div>
+  <progress id="progressBar" value="0" max="100"></progress>
+  <video id="outputVideo" controls></video>
+  <pre id="errorLog">Error Log:
+---------------
 </pre>
-      </div>
-    </section>
 
-  </main>
+  <!-- REMOVED the UMD script tag and the __webpack_public_path__ script -->
 
-  <footer class="text-center text-xs text-gray-600 p-4 mt-auto">
-    Using ffmpeg.wasm - Processing runs entirely in your browser.
-  </footer>
-
-  <!-- Optional: Success Sound -->
-  <audio id="successSound" src="data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YWfovT1f..." preload="auto"></audio> <!-- Replace with a real (short) sound if desired -->
-
-  <!-- REMOVED the separate script block for window.FFMPEG_CONFIG -->
-
-  <!-- Main Application Logic -->
+  <!-- Main script reverted to type="module" -->
   <script type="module">
-    // --- Define paths as constants within the module scope ---
-    // IMPORTANT: These paths are relative to the *main imported script* (ffmpegImportPath)
-    // Adjust ONLY if your ffmpeg-assets structure is different.
-    const ffmpegImportPath = './ffmpeg-assets/index.js'; // Main ESM entry point
-    const corePath = './ffmpeg-core.js';       // Core WASM loader (relative to ffmpegImportPath)
-    const workerPath = './worker.js';           // Worker script (relative to ffmpegImportPath)
+    // REMOVED async IIFE wrapper as it's not needed for type=module
+    const errorLogElement = document.getElementById('errorLog');
+    const statusElement = document.getElementById('status');
 
-    // --- Imports and Setup ---
-    // Import using the constant path
-    const { FFmpeg } = await import(ffmpegImportPath);
-    // Instantiate FFmpeg
-    const ffmpeg = new FFmpeg();
-
-    // --- DOM Elements ---
-    const dropZone = document.getElementById('dropZone');
-    const dropZoneText = document.getElementById('dropZoneText');
-    const fileInput = document.getElementById('fileInput');
-    const fileList = document.getElementById('fileList');
-    const intervalInput = document.getElementById('interval');
-    const resolutionSelect = document.getElementById('resolution');
-    const customDimensionsDiv = document.getElementById('customDimensions');
-    const customWidthInput = document.getElementById('customWidth');
-    const customHeightInput = document.getElementById('customHeight');
-    const selectFolderBtn = document.getElementById('selectFolderBtn');
-    const folderPathP = document.getElementById('folderPath');
-    const startBtn = document.getElementById('startBtn');
-    const statusDiv = document.getElementById('status');
-    const progressBar = document.getElementById('progressBar');
-    const progressText = document.getElementById('progressText');
-    const etaP = document.getElementById('eta');
-    const videoInfoDiv = document.getElementById('videoInfo');
-    const errorLog = document.getElementById('errorLog');
-    const successSound = document.getElementById('successSound'); // Optional sound
-
-    // --- Application State ---
-    let isFfmpegLoaded = false;
-    let isProcessing = false;
-    let filesToProcess = []; // Array of { file: File, id: string, metadata: object | null }
-    let outputDirectoryHandle = null;
-    let totalEstimatedFrames = 0;
-    let processedFrames = 0;
-    let processStartTime = 0;
-    let currentFileIndex = 0;
-    let currentFileProgress = 0; // Progress within the current file (0-1)
-
-    // --- Logging ---
-    const log = (level, ...args) => {
-      const timestamp = new Date().toLocaleTimeString();
-      // Basic object formatting for logging
-      const message = args.map(arg => {
-         if (typeof arg === 'object' && arg !== null) {
-             if (arg instanceof Error) return arg.stack || arg.message;
-             try { return JSON.stringify(arg); } catch (e) { return '[Unserializable Object]'; }
-         }
-         return arg;
-      }).join(' ');
-      console[level](`[${timestamp}]`, ...args); // Keep original objects for console inspection
-      // Append to visual log, keep it trimmed
-      errorLog.textContent += `\n[${timestamp} ${level.toUpperCase()}] ${message}`;
-      errorLog.scrollTop = errorLog.scrollHeight; // Auto-scroll
-       // Limit log length (optional)
-       const lines = errorLog.textContent.split('\n');
-       if (lines.length > 100) {
-            const logHeader = "Console Logs & Errors:\n----------------------\n";
-            errorLog.textContent = logHeader + lines.slice(-100).join('\n'); // Add header back
-       }
+    // Global error handler
+    window.onerror = function(message, source, lineno, colno, error) {
+      console.error("[Global Error Handler]", message, source, lineno, colno, error);
+      errorLogElement.textContent += `\n[Global Error] ${message}\n  Source: ${source}\n  Line: ${lineno}, Col: ${colno}\n  Error Obj: ${error ? error.stack || error : 'N/A'}\n---------------\n`;
+      if (!statusElement.textContent.startsWith("Error")) {
+          statusElement.textContent = "A critical error occurred. Check error log.";
+      }
+      return false;
     };
-    const logInfo = (...args) => log('info', ...args);
-    const logWarn = (...args) => log('warn', ...args);
-    const logError = (...args) => log('error', ...args);
 
-    // Global Error Handler (catches unhandled promise rejections too)
-    window.addEventListener('error', (event) => {
-        logError('Unhandled Error:', event.message, event.filename, event.lineno, event.colno, event.error);
-        updateStatus('Critical error occurred. Check logs.', true);
-        if (isProcessing) stopProcessing('Stopped due to unhandled error');
-    });
-    window.addEventListener('unhandledrejection', (event) => {
-        logError('Unhandled Promise Rejection:', event.reason);
-        updateStatus('Critical error occurred. Check logs.', true);
-        if (isProcessing) stopProcessing('Stopped due to unhandled promise rejection');
-    });
+    console.log('Module script executing...');
+    statusElement.textContent = "Importing FFmpeg library (Local ESM)...";
 
-    // --- FFmpeg Initialization ---
-    async function loadFFmpeg() {
-      logInfo(">>> loadFFmpeg function STARTING <<<"); // Keep this for debugging start
-      updateStatus('Initializing FFmpeg...');
-      try {
-        // Log using the constants defined above
-        logInfo(`Loading FFmpeg core from: ${corePath}`);
-        logInfo(`Using worker from: ${workerPath}`);
+    // --- Define LOCAL paths for ESM build ---
+    // IMPORTANT: Ensure you have the ESM versions of:
+    // - ffmpeg.js        (from @ffmpeg/ffmpeg/dist/esm/)
+    // - worker.js        (from @ffmpeg/ffmpeg/dist/esm/) <-- Needed for classWorkerURL
+    // - ffmpeg-core.js   (from @ffmpeg/core/dist/esm/)
+    // - ffmpeg-core.wasm (from @ffmpeg/core/dist/esm/)
+    // in the './ffmpeg-assets/' directory relative to index.html
+    const ffmpegPath = './ffmpeg-assets/index.js';
+    const corePath = './ffmpeg-core.js';
+    const workerPath = './worker.js';
 
-        ffmpeg.on('log', ({ type, message }) => {
-           // Filter out verbose logs if needed
-            if (type === 'fferr') { // Always log errors
-                logError(`[ffmpeg ${type}] ${message}`);
-            } else if (!message.startsWith('frame=') && !message.startsWith('size=')) {
-                logInfo(`[ffmpeg ${type}] ${message}`);
-            }
-        });
+    try {
+      // --- Import necessary items from the LOCAL ESM library build ---
+      console.log(`Attempting to import FFmpeg library from: ${ffmpegPath}`);
+      const { FFmpeg } = await import(ffmpegPath);
+      console.log('FFmpeg ESM module imported successfully.');
+      statusElement.textContent = "FFmpeg library imported. Initializing...";
 
-        ffmpeg.on('progress', ({ progress, time }) => {
-            if (!isProcessing) return; // Ignore progress if not actively processing
+      // --- Instantiate the FFmpeg class ---
+      // Removed corePath from here, will be specified in load()
+      const ffmpeg = new FFmpeg();
+      console.log('FFmpeg instance created.');
 
-            // Progress is for the *current* ffmpeg.exec call
-            currentFileProgress = progress || 0; // Ensure progress is a number
-
-            // Calculate overall progress
-            // Ensure filesToProcess.length is not zero to avoid NaN
-            const numFiles = filesToProcess.length || 1;
-            const filesCompletedRatio = currentFileIndex / numFiles;
-            const currentFileContribution = (1 / numFiles) * currentFileProgress;
-            const overallProgress = filesCompletedRatio + currentFileContribution;
-
-
-            const percent = Math.min(100, Math.max(0, Math.round(overallProgress * 100)));
-            progressBar.value = percent;
-            progressText.textContent = `${percent}%`;
-
-             // ETA Calculation
-            const elapsedTime = (Date.now() - processStartTime) / 1000; // seconds
-            if (elapsedTime > 1 && overallProgress > 0.01 && isFinite(overallProgress)) { // Avoid division by zero / early unstable estimates
-                const estimatedTotalTime = elapsedTime / overallProgress;
-                const remainingTime = Math.round(estimatedTotalTime - elapsedTime);
-                if (remainingTime >= 0 && isFinite(remainingTime)) {
-                    const minutes = Math.floor(remainingTime / 60);
-                    const seconds = remainingTime % 60;
-                    etaP.textContent = `ETA: ${minutes}m ${seconds}s`;
-                } else {
-                     etaP.textContent = 'ETA: calculating...'; // Changed from finalizing
-                }
-            } else {
-                 etaP.textContent = 'ETA: calculating...';
-            }
-
-            // Update status with per-file progress
-             const statusFileProgress = Math.round(currentFileProgress * 100);
-             // Check filesToProcess has items before accessing index
-             if (filesToProcess.length > 0 && currentFileIndex < filesToProcess.length) {
-                updateStatus(`Processing Video ${currentFileIndex + 1}/${filesToProcess.length}: ${statusFileProgress}%`, false, false);
-             }
-        });
-
-        // Load using the constants defined above
-        await ffmpeg.load({
-          coreURL: corePath,
-          classWorkerURL: workerPath
-        });
-
-        isFfmpegLoaded = true; // Set state variable
-        logInfo('FFmpeg loaded successfully.');
-        updateStatus('Ready. Add videos and select output folder.');
-        checkCanStart(); // Enable start button if other conditions met
-      } catch (error) {
-        logError('FFmpeg loading failed:', error); // Log the actual error object
-        updateStatus(`Error loading FFmpeg: ${error.message || 'Unknown error'}. Check console & paths.`, true);
-        isFfmpegLoaded = false;
-      }
-    }
-
-    // --- UI Update Functions ---
-    function updateStatus(message, isError = false, resetProgress = true) {
-      statusDiv.textContent = message;
-      // Clear existing color classes before adding new ones
-      statusDiv.classList.remove('text-red-400', 'text-green-400', 'text-yellow-400');
-      if (isError) {
-        statusDiv.classList.add('text-red-400');
-      } else if (message.toLowerCase().includes('complete')) {
-        statusDiv.classList.add('text-green-400');
-      } else if (message.toLowerCase().includes('warning') || message.toLowerCase().includes('deleting') || message.toLowerCase().includes('initializing') || message.toLowerCase().includes('loading') || message.toLowerCase().includes('fetching')) {
-         statusDiv.classList.add('text-yellow-400');
-      } // Default text color is gray-300 from body styles
-
-      if (resetProgress) {
-        progressBar.value = 0;
-        progressText.textContent = '0%';
-        etaP.textContent = 'ETA: -';
-      }
-    }
-
-    function updateFileList() {
-      fileList.innerHTML = ''; // Clear existing list
-      if (filesToProcess.length === 0) {
-          dropZoneText.textContent = 'Drop video files here or click to select';
-          videoInfoDiv.innerHTML = '<p class="text-gray-500 italic">Drop a video file to see its details here.</p>';
-      } else {
-         dropZoneText.textContent = `${filesToProcess.length} file(s) added. Drag more or click to add.`;
-         filesToProcess.forEach((item, index) => {
-            const li = document.createElement('li');
-            li.className = 'flex justify-between items-center bg-gray-700 px-2 py-1 rounded cursor-pointer hover:bg-gray-600';
-            li.textContent = `${index + 1}. ${item.file.name} (${formatBytes(item.file.size)})`;
-            // Add a small button to remove the file
-            const removeBtn = document.createElement('button');
-            removeBtn.textContent = '✕';
-            removeBtn.className = 'text-red-400 hover:text-red-300 text-xs font-bold px-1 ml-2 flex-shrink-0'; // Added flex-shrink-0
-            removeBtn.title = `Remove ${item.file.name}`;
-            removeBtn.onclick = (e) => {
-                e.stopPropagation(); // Prevent triggering li click
-                removeFile(index);
-            };
-            li.appendChild(removeBtn);
-            fileList.appendChild(li);
-
-            // Add click listener to show metadata for this file
-            li.onclick = () => displayVideoMetadata(item);
-         });
-         // Display metadata for the first file initially
-         if (filesToProcess.length > 0 && !isProcessing) { // Only auto-display if not busy
-            // Ensure the first item actually needs refresh before triggering display/fetch
-            if(filesToProcess[0].metadata?.needsRefresh !== false){
-                 displayVideoMetadata(filesToProcess[0]);
-            } else {
-                 renderMetadata(filesToProcess[0].metadata, filesToProcess[0].file.name); // Just render cached
-                 // Still highlight the first item
-                 if(fileList.children.length > 0) {
-                     Array.from(fileList.children).forEach((li, index) => {
-                         li.classList.toggle('ring-1', index === 0);
-                         li.classList.toggle('ring-blue-500', index === 0);
-                     });
-                 }
-            }
-         }
-      }
-      checkCanStart();
-      estimateOutputFrames(); // Re-estimate when file list changes
-    }
-
-    function removeFile(indexToRemove) {
-        if (isProcessing) {
-            logWarn("Cannot remove files while processing.");
-            return;
+      // --- Attach event handlers ---
+      const progressBar = document.getElementById('progressBar');
+      ffmpeg.on('progress', ({ progress, time }) => {
+        // progress is 0-1, adjust for display
+        const percent = Math.round(progress * 100);
+        progressBar.value = percent;
+        if (!statusElement.textContent.includes("complete") && !statusElement.textContent.includes("Error")) {
+             // Check time exists and format it
+             const timeStr = time ? ` (Time: ${Math.round(time / 1000)}s)` : '';
+             statusElement.textContent = `Processing... ${percent}%${timeStr}`;
         }
-        const removedItem = filesToProcess.splice(indexToRemove, 1);
-        if (removedItem.length > 0) {
-            logInfo(`Removed file: ${removedItem[0].file.name}`);
-            updateFileList(); // This will re-render the list and estimates
-
-            // If the removed item's info was displayed, clear or show first item's info
-            if (videoInfoDiv.textContent.includes(removedItem[0].file.name) || filesToProcess.length === 0) {
-                 if (filesToProcess.length > 0) {
-                     displayVideoMetadata(filesToProcess[0]); // Display first item now
-                 } else {
-                     videoInfoDiv.innerHTML = '<p class="text-gray-500 italic">Drop a video file to see its details here.</p>'; // Clear video info
-                     updateFrameCountWarning(0); // Clear estimate warning
-                 }
-            } else {
-                // If another item's info was displayed, keep it, but maybe re-highlight the first?
-                 if (filesToProcess.length > 0) {
-                     // Highlight the first item without fetching metadata again if it was already displayed
-                      Array.from(fileList.children).forEach((li, index) => {
-                         li.classList.toggle('ring-1', index === 0);
-                         li.classList.toggle('ring-blue-500', index === 0);
-                      });
-                 }
-            }
-        }
-    }
-
-
-    async function displayVideoMetadata(fileItem) {
-        // Indicate which item is being displayed visually
-        Array.from(fileList.children).forEach((li, index) => {
-            // Simple check based on index, assuming filesToProcess order matches list order
-            const isCurrentItem = filesToProcess[index] === fileItem;
-            li.classList.toggle('ring-1', isCurrentItem);
-            li.classList.toggle('ring-blue-500', isCurrentItem);
-        });
-
-
-        if (!isFfmpegLoaded) {
-            videoInfoDiv.innerHTML = '<p class="text-gray-500 italic">FFmpeg not loaded yet. Cannot fetch metadata.</p>';
-            return;
-        }
-        // Check if cached and doesn't need refresh, render immediately
-        if (fileItem.metadata && fileItem.metadata.needsRefresh === false) {
-            renderMetadata(fileItem.metadata, fileItem.file.name);
-            return;
-        }
-
-        videoInfoDiv.innerHTML = `<p class="text-yellow-400 italic">Fetching metadata for ${fileItem.file.name}...</p>`;
-        let tempStderrHandler = null; // Only one handler needed
-
-        try {
-             // Write file to virtual FS temporarily
-             // Ensure file ID is part of the name for uniqueness
-             const safeBaseName = fileItem.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-             const inputFilename = `meta_${fileItem.id}_${safeBaseName}`;
-             logInfo(`Writing ${inputFilename} to virtual FS for metadata check.`);
-             const data = new Uint8Array(await fileItem.file.arrayBuffer());
-
-             // Check if file already exists from a previous failed attempt (unlikely but possible)
-             try {
-                 await ffmpeg.deleteFile(inputFilename);
-                 logWarn(`Deleted existing virtual file ${inputFilename} before writing.`);
-             } catch (e) { /* Ignore error if file doesn't exist */ }
-
-             await ffmpeg.writeFile(inputFilename, data);
-
-
-             // Run ffmpeg command to get info (stderr contains info)
-             let stderrOutput = '';
-             tempStderrHandler = ({ type, message }) => {
-                 if (type === 'fferr') {
-                    stderrOutput += message + '\n';
-                 }
-                 // Avoid logging verbose info logs during metadata check
-                 // console.debug(`[ffmpeg meta ${type}] ${message}`);
-             };
-             ffmpeg.on('log', tempStderrHandler); // Add temporary handler
-
-             // Run a minimal command. `-f null -` prevents output file creation. Add -hide_banner
-             await ffmpeg.exec(['-hide_banner', '-i', inputFilename, '-f', 'null', '-']);
-
-             logInfo(`Metadata stderr for ${inputFilename}:\n${stderrOutput || '<no stderr>'}`);
-
-              // Delete file *before* parsing, in case parsing fails
-              try {
-                 await ffmpeg.deleteFile(inputFilename);
-                 logInfo(`Deleted ${inputFilename} from virtual FS.`);
-              } catch(delErr){
-                 logWarn(`Could not delete virtual file ${inputFilename} after metadata fetch: ${delErr}`);
-              }
-
-             // Parse stderr output
-             const metadata = parseFfmpegStderr(stderrOutput);
-             metadata.needsRefresh = false; // Mark as fetched, even if error occurred during parse
-             fileItem.metadata = metadata; // Cache it (contains error if any)
-             renderMetadata(metadata, fileItem.file.name); // Render result (or error)
-             estimateOutputFrames(); // Update estimate now that we have duration (or know it's missing)
-
-        } catch (error) {
-            logError(`Error executing FFmpeg for metadata fetch (${fileItem.file.name}):`, error);
-            videoInfoDiv.innerHTML = `<p class="text-red-400">Could not fetch metadata for ${fileItem.file.name}. FFmpeg execution failed: ${error.message || error}</p>`;
-            fileItem.metadata = { error: `FFmpeg execution failed: ${error.message || error}`, needsRefresh: true }; // Cache error state, mark for refresh
-
-            // Attempt to clean up file even on exec error
-             const safeBaseName = fileItem.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-             const inputFilename = `meta_${fileItem.id}_${safeBaseName}`;
-             try {
-                 await ffmpeg.deleteFile(inputFilename);
-                 logInfo(`Cleaned up ${inputFilename} from virtual FS after metadata error.`);
-             } catch (e) { /* Ignore */ }
-
-        } finally {
-             // Remove temporary log handler if it was added
-             if (tempStderrHandler) {
-                ffmpeg.off('log', tempStderrHandler);
-             }
-        }
-    }
-
-    function parseFfmpegStderr(stderr) {
-        const metadata = {
-            duration: null,
-            resolution: null,
-            framerate: null,
-            codec: null,
-            creationTime: null,
-            error: null, // Add error field
-            needsRefresh: false, // Default state
-            raw: stderr // Keep raw output for debugging
-        };
-
-        // Check common errors first
-        if (!stderr || stderr.trim() === '') {
-             metadata.error = "No output from FFmpeg (possible load or execution error).";
-             logError(metadata.error);
-             return metadata;
-        }
-        if (/error while loading shared libraries|permission denied|command not found/i.test(stderr)) {
-            metadata.error = "FFmpeg core failed to load or execute.";
-            logError(metadata.error + " Stderr:", stderr);
-            return metadata;
-        }
-         if (/Invalid data found when processing input/i.test(stderr)) {
-             metadata.error = "Invalid video data or file is corrupted/unsupported.";
-             logWarn(metadata.error + " Stderr:", stderr);
-             return metadata; // Keep parsing other fields if possible? Maybe not.
-         }
-         // Check for more specific errors
-         if (/source: No such file or directory/i.test(stderr)) {
-             metadata.error = "FFmpeg couldn't find the input file in virtual FS.";
-             logError(metadata.error + " Stderr:", stderr);
-             return metadata;
-         }
-
-
-        // Duration: Look for "Duration: HH:MM:SS.ms"
-        const durationMatch = stderr.match(/Duration: (\d{2}):(\d{2}):(\d{2})\.(\d+)/);
-        if (durationMatch) {
-            const [, h, m, s, ms] = durationMatch;
-            metadata.duration = parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(s) + parseFloat(`0.${ms}`);
-            if (isNaN(metadata.duration)) metadata.duration = null; // Validate parsing
-        } else {
-            logWarn("Could not parse duration from stderr.");
-        }
-
-
-        // Stream info: Look for lines like "Stream #0:0... Video: codec (profile / level), format, WxH..."
-        // Make resolution matching more robust (optional pixel format, DAR/SAR)
-        // Handle cases with multiple video streams? Take the first one?
-        const streamRegex = /Stream #\d+:\d+(?:\[.*?\])?.*?: Video: (\w+)(?:\s*\(.*?\))?,?\s*.*?(\d+x\d+)(?:\[.*?\])?(?:, ([\d.]+)\s*fps)?/i;
-        const streamMatches = stderr.matchAll(streamRegex); // Find all video streams
-        let firstStream = true;
-
-        for (const streamMatch of streamMatches) {
-            if (firstStream) { // Take info from the first identified video stream
-                metadata.codec = streamMatch[1];
-                metadata.resolution = streamMatch[2];
-                metadata.framerate = streamMatch[3] ? parseFloat(streamMatch[3]) : null;
-                if (isNaN(metadata.framerate)) metadata.framerate = null;
-                firstStream = false;
-                // Break here if we only want the first stream's info
-                 break;
-            } else {
-                logWarn("Multiple video streams detected, using info from the first one.");
-            }
-        }
-
-
-        // Fallback attempts if primary regex fails or no stream found
-         if (firstStream) { // Means no match found with the regex above
-             logWarn("Primary stream regex failed to find video stream, attempting fallbacks.");
-             const resMatch = stderr.match(/Video:.*? (\d+x\d+)/i);
-             if (resMatch) metadata.resolution = resMatch[1];
-             const fpsMatch = stderr.match(/([\d.]+)\s*fps/i);
-             if (fpsMatch) {
-                metadata.framerate = parseFloat(fpsMatch[1]);
-                 if (isNaN(metadata.framerate)) metadata.framerate = null;
-             }
-             const codecMatch = stderr.match(/Video: (\w+)/i);
-             if (codecMatch) metadata.codec = codecMatch[1];
-         }
-
-        // Check if essential info is still missing
-        if (!metadata.resolution) {
-            logWarn("Could not parse resolution from stderr.");
-        }
-        if (!metadata.framerate) {
-             logWarn("Could not parse framerate from stderr.");
-        }
-
-        // Creation Time: Look for "creation_time   :" (case-insensitive)
-        const creationMatch = stderr.match(/creation_time\s*:\s*(.+)/i);
-        if (creationMatch) {
-            metadata.creationTime = creationMatch[1].trim();
-        }
-
-        // If essential data missing after parsing, set an informative error
-         if (!metadata.resolution || !metadata.duration) {
-              // Don't override more specific errors found earlier
-              if (!metadata.error) {
-                 metadata.error = "Could not parse essential video properties (resolution/duration). Video might be invalid or info unavailable.";
-                 logWarn(metadata.error + " Raw stderr:", metadata.raw);
-              }
-         }
-
-
-        return metadata;
-    }
-
-    function renderMetadata(metadata, filename) {
-         if (!metadata) {
-              videoInfoDiv.innerHTML = '<p class="text-gray-500 italic">No metadata available.</p>';
-              return;
-         }
-         // Display error prominently if present
-         if (metadata.error) {
-              videoInfoDiv.innerHTML = `<p class="font-semibold text-gray-300 mb-1">${filename}</p><p class="text-red-400">Metadata Error: ${metadata.error}</p>`;
-              // Optionally show raw output for debugging errors
-              // videoInfoDiv.innerHTML += `<details><summary class="text-xs text-gray-500 cursor-pointer mt-1">Raw Output</summary><pre class="text-[0.6rem] mt-1 bg-gray-900 p-1 rounded max-h-20 overflow-auto">${metadata.raw || ''}</pre></details>`;
-              return;
-         }
-
-         let content = `<p class="font-semibold text-gray-300 mb-1">${filename}</p>`;
-         content += `<p><strong>Resolution:</strong> ${metadata.resolution || '<span class="text-yellow-400">N/A</span>'}</p>`;
-         content += `<p><strong>Duration:</strong> ${metadata.duration ? metadata.duration.toFixed(2) + 's' : '<span class="text-yellow-400">N/A</span>'}</p>`;
-         content += `<p><strong>Framerate:</strong> ${metadata.framerate ? metadata.framerate.toFixed(2) + ' fps' : '<span class="text-yellow-400">N/A</span>'}</p>`;
-         content += `<p><strong>Codec:</strong> ${metadata.codec || '<span class="text-yellow-400">N/A</span>'}</p>`;
-         content += `<p><strong>Created:</strong> ${metadata.creationTime || 'N/A'}</p>`;
-         // Uncomment to show raw stderr for debugging successful fetches
-         // content += `<details><summary class="text-xs text-gray-500 cursor-pointer mt-1">Raw Output</summary><pre class="text-[0.6rem] mt-1 bg-gray-900 p-1 rounded max-h-20 overflow-auto">${metadata.raw || ''}</pre></details>`;
-
-         videoInfoDiv.innerHTML = content;
-    }
-
-    function checkCanStart() {
-      const intervalInputVal = intervalInput.value; // Get value explicitly
-      const interval = parseFloat(intervalInputVal);
-      const res = resolutionSelect.value;
-      const customWInputVal = customWidthInput.value; // Get value explicitly
-      const customHInputVal = customHeightInput.value; // Get value explicitly
-      const customW = parseInt(customWInputVal);
-      const customH = parseInt(customHInputVal);
-
-      const isValidInterval = !isNaN(interval) && interval > 0 && isFinite(interval);
-      // Custom dimensions are only required if 'custom' is selected
-      // Ensure parsed values are numbers and positive
-      const isValidCustomRes = res !== 'custom' || (!isNaN(customW) && customW > 0 && !isNaN(customH) && customH > 0);
-
-      // --- DEBUG LOGS (Keep temporarily) ---
-      // console.log('--- checkCanStart() ---');
-      // console.log(`isFfmpegLoaded: ${isFfmpegLoaded}`);
-      // console.log(`isProcessing: ${isProcessing} (!isProcessing: ${!isProcessing})`);
-      // console.log(`filesToProcess.length: ${filesToProcess.length} (> 0: ${filesToProcess.length > 0})`);
-      // console.log(`outputDirectoryHandle:`, outputDirectoryHandle, `( !== null: ${outputDirectoryHandle !== null})`);
-      // console.log(`Interval Input: "${intervalInputVal}", Parsed: ${interval}, isValidInterval: ${isValidInterval}`);
-      // console.log(`Resolution Mode: "${res}"`);
-      // console.log(`Custom W Input: "${customWInputVal}", Parsed: ${customW}`);
-      // console.log(`Custom H Input: "${customHInputVal}", Parsed: ${customH}`);
-      // console.log(`isValidCustomRes: ${isValidCustomRes}`);
-      // --- END DEBUG LOGS ---
-
-      const canStart = isFfmpegLoaded &&
-                      !isProcessing &&
-                      filesToProcess.length > 0 &&
-                      outputDirectoryHandle !== null &&
-                      isValidInterval &&
-                      isValidCustomRes;
-
-      // console.log(`>>> Final canStart: ${canStart}`); // Log final result
-
-      startBtn.disabled = !canStart;
-
-      // Provide tooltip feedback on why disabled
-        let title = '';
-        if (!isFfmpegLoaded) title = "FFmpeg is still loading...";
-        else if (isProcessing) title = "Processing is in progress...";
-        else if (filesToProcess.length === 0) title = "Add at least one video file.";
-        else if (outputDirectoryHandle === null) title = "Select an output folder.";
-        else if (!isValidInterval) title = "Enter a valid positive interval (e.g., 0.5 or 1).";
-        else if (!isValidCustomRes && res === 'custom') title = "Enter valid positive custom dimensions (Width and Height).";
-        startBtn.title = title; // Set tooltip
-    }
-
-    function estimateOutputFrames() {
-        totalEstimatedFrames = 0;
-        const interval = parseFloat(intervalInput.value);
-        if (!isValidInterval(interval) || filesToProcess.length === 0) {
-            updateFrameCountWarning(0);
-            return;
-        }
-
-        let canEstimateAll = true;
-        filesToProcess.forEach(item => {
-            // Only count if metadata is available and valid (has duration)
-            if (item.metadata && typeof item.metadata.duration === 'number' && item.metadata.duration > 0 && !item.metadata.error) {
-                totalEstimatedFrames += Math.ceil(item.metadata.duration / interval);
-            } else {
-                 // Check if metadata fetch failed or duration is missing/invalid
-                 if (!item.metadata || typeof item.metadata.duration !== 'number' || item.metadata.duration <= 0 || item.metadata.error) {
-                    canEstimateAll = false; // Cannot estimate accurately if any file is missing duration
-                    logWarn(`Cannot estimate frames accurately for ${item.file.name}, valid duration missing.`);
-                 } else {
-                     // Should not happen based on above condition, but safety check
-                     totalEstimatedFrames += Math.ceil(item.metadata.duration / interval);
-                 }
-            }
-        });
-         // Ensure totalEstimatedFrames is a non-negative integer
-         totalEstimatedFrames = Math.max(0, Math.floor(totalEstimatedFrames));
-
-        updateFrameCountWarning(totalEstimatedFrames, canEstimateAll);
-    }
-
-     function updateFrameCountWarning(count, isAccurate = true) {
-        const warningThreshold = 10000;
-        const existingWarning = document.getElementById('frameEstimateWarning');
-        if (existingWarning) existingWarning.remove(); // Remove previous warning first
-
-        if (count > 0) {
-             const warningDiv = document.createElement('div');
-             warningDiv.id = 'frameEstimateWarning';
-             // Apply base classes + conditional classes
-             warningDiv.className = `text-xs mt-2 p-2 rounded border ${count > warningThreshold ? 'text-yellow-400 bg-yellow-900/50 border-yellow-700' : 'text-blue-300 bg-blue-900/30 border-blue-700'}`;
-
-             let prefix = isAccurate ? "~" : "At least "; // Indicate if estimate is potentially low
-             let text = `${prefix}${count.toLocaleString()} frames.`;
-             if (count > warningThreshold) {
-                text = `⚠️ Estimated output: ${text} This may take a long time and require significant disk space.`;
-             } else {
-                 text = `Estimated output: ${text}`;
-             }
-             if (!isAccurate && count > 0) {
-                 // Avoid adding this if the only reason for inaccuracy was 0 duration files
-                 let hasMissingDurations = filesToProcess.some(item => !item.metadata || typeof item.metadata.duration !== 'number' || item.metadata.duration <= 0);
-                 if (hasMissingDurations) {
-                    text += " (Could be more due to missing video durations).";
-                 }
-             }
-
-             warningDiv.textContent = text;
-
-             // Insert after the start button's container div
-              const startButtonContainer = startBtn.closest('div');
-              if (startButtonContainer && startButtonContainer.parentNode) {
-                  // Insert after the container div
-                  startButtonContainer.parentNode.insertBefore(warningDiv, startButtonContainer.nextSibling);
-              } else {
-                  // Fallback: append to main if container not found? Unlikely.
-                  document.querySelector('main section:first-of-type')?.appendChild(warningDiv);
-              }
-        }
-    }
-
-
-    function isValidInterval(interval) {
-        return !isNaN(interval) && interval > 0 && isFinite(interval);
-    }
-
-    // --- Event Handlers ---
-    dropZone.addEventListener('dragover', (e) => {
-      e.preventDefault(); // Necessary to allow drop
-      e.stopPropagation();
-      if (!isProcessing) { // Don't allow drop visual if processing
-          dropZone.classList.add('drop-zone-active');
-      }
-    });
-    dropZone.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dropZone.classList.remove('drop-zone-active');
-    });
-    dropZone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dropZone.classList.remove('drop-zone-active');
-      if (isProcessing) {
-        logWarn("Cannot add files while processing.");
-        return;
-      }
-      handleFiles(e.dataTransfer.files);
-    });
-    dropZone.addEventListener('click', () => {
-       if (isProcessing) {
-          logWarn("Cannot add files while processing.");
-          return;
-       }
-      fileInput.click();
-    });
-    fileInput.addEventListener('change', (e) => {
-       if (isProcessing) {
-          logWarn("Cannot add files while processing.");
-          return;
-       }
-       if (e.target.files) {
-          handleFiles(e.target.files);
-       }
-      // Reset file input to allow selecting the same file again
-      fileInput.value = null;
-    });
-
-    function handleFiles(incomingFiles) {
-        if (!incomingFiles) return; // Safety check
-
-      const newFiles = Array.from(incomingFiles).filter(file => {
-          if (!file.type.startsWith('video/')) {
-             logWarn(`Ignoring non-video file: ${file.name} (Type: ${file.type || 'unknown'})`);
-             return false;
-          }
-          // Optional: Check for duplicates by name and size (basic check)
-          const isDuplicate = filesToProcess.some(existing => existing.file.name === file.name && existing.file.size === file.size);
-          if (isDuplicate) {
-             logWarn(`Ignoring duplicate file: ${file.name}`);
-             return false;
-          }
-          return true;
+      });
+      ffmpeg.on('log', ({ type, message }) => {
+        console.log(`[ffmpeg ${type}] ${message}`); // Log to console
       });
 
-      if (newFiles.length === 0) {
-          if (incomingFiles.length > 0){ // Only show warning if non-video files were attempted
-             updateStatus('No new valid, non-duplicate video files added.', true, false); // Non-blocking warning
-             setTimeout(() => updateStatus(isFfmpegLoaded ? 'Ready.' : 'Initializing FFmpeg...'), 3000);
-          }
-          return; // No new valid files to process
+      // --- Load the core AND worker using LOCAL paths ---
+      statusElement.textContent = "Loading locally hosted ffmpeg core & worker (may take time)...";
+      console.log(`Loading FFmpeg core & worker via ffmpeg.load() using local URLs...`);
+      console.log(`  coreURL: ${corePath}`);
+      console.log(`  classWorkerURL: ${workerPath}`);
+      // Provide BOTH coreURL and classWorkerURL
+      await ffmpeg.load({ 
+        coreURL: corePath, 
+        classWorkerURL: workerPath 
+      });
+      console.log('FFmpeg core and worker loaded successfully via ffmpeg.load()');
+      console.log('>>> ffmpeg.load() promise resolved successfully! <<<');
+      statusElement.textContent = "FFmpeg core loaded.";
+
+      // --- Start FFmpeg processing ---
+      const videoEl = document.getElementById('outputVideo');
+
+      statusElement.textContent = "Fetching input video file...";
+      console.log('Fetching input video...');
+      // Use standard fetch for the video file.
+      const videoResponse = await fetch(
+        "https://raw.githubusercontent.com/ffmpegwasm/testdata/master/Big_Buck_Bunny_180_10s.webm"
+      );
+      if (!videoResponse.ok) {
+        throw new Error(`Failed to fetch video: ${videoResponse.status} ${videoResponse.statusText}`);
       }
+      const videoData = new Uint8Array(await videoResponse.arrayBuffer());
+      console.log('Input video fetched successfully');
 
+      await ffmpeg.writeFile('input.webm', videoData);
+      console.log('Input video written to virtual filesystem');
 
-       const addedFileItems = [];
-       newFiles.forEach(file => {
-          const newItem = {
-               file: file,
-               id: generateSimpleId(), // Unique ID for this session
-               metadata: { needsRefresh: true } // Mark for metadata fetch
-          };
-          filesToProcess.push(newItem);
-          addedFileItems.push(newItem);
-       });
+      statusElement.textContent = "Transcoding to MP4 (this may take a moment)...";
+      console.log('Starting transcoding...');
+      await ffmpeg.exec(['-i', 'input.webm', 'output.mp4']);
+      console.log('Transcoding completed');
 
-      logInfo(`Added ${newFiles.length} new video file(s). Total: ${filesToProcess.length}`);
-      updateFileList(); // This now handles calling displayVideoMetadata for the first item
+      const outputData = await ffmpeg.readFile('output.mp4');
+      console.log('Output file read');
 
-        // If only one new file was added, its metadata fetch is already triggered by updateFileList
-        // If multiple files were added, optionally trigger metadata fetch for others in background
-        /*
-        if (addedFileItems.length > 1) {
-            (async () => {
-                for (let i = 1; i < addedFileItems.length; i++) {
-                    // Check if metadata still needs refresh before fetching
-                    if(addedFileItems[i].metadata?.needsRefresh === true) {
-                       await displayVideoMetadata(addedFileItems[i]);
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay
-                }
-            })();
-        }
-        */
-    }
+      const blob = new Blob([outputData.buffer], { type: 'video/mp4' });
+      const videoURL = URL.createObjectURL(blob);
 
-    intervalInput.addEventListener('input', () => {
-        checkCanStart();
-        estimateOutputFrames();
-    });
+      videoEl.src = videoURL;
+      console.log('Video source set');
 
-    resolutionSelect.addEventListener('change', () => {
-      customDimensionsDiv.classList.toggle('hidden', resolutionSelect.value !== 'custom');
-      checkCanStart();
-    });
-    customWidthInput.addEventListener('input', checkCanStart);
-    customHeightInput.addEventListener('input', checkCanStart);
+      statusElement.textContent = "Transcoding complete! Click play to view.";
+      progressBar.value = 100;
 
-    selectFolderBtn.addEventListener('click', async () => {
-       if (isProcessing) {
-           logWarn("Cannot change folder while processing.");
-           return;
-       }
-      try {
-        // Check for File System Access API support
-        if (!window.showDirectoryPicker) {
-             updateStatus('Error: Browser does not support File System Access API.', true);
-             logError('showDirectoryPicker is not supported in this browser.');
-             alert('Your browser does not support the required File System Access API. Please use a recent version of Chrome, Edge, or Opera.');
-             return; // Stop here
-        }
-        logInfo("Requesting directory picker...");
-        const handle = await window.showDirectoryPicker({
-            id: 'videoFrameExtractorOutput', // Optional ID to remember the folder
-            mode: 'readwrite' // Request read+write permission
-        });
-        logInfo(`Got directory handle: ${handle.name}`);
+      console.log('Processing finished.');
 
-        // Verify permission again immediately after getting handle (belt and suspenders)
-        if (await handle.queryPermission({ mode: 'readwrite' }) !== 'granted') {
-             logWarn("Permission was not granted immediately after selection. Requesting explicitly.");
-             if (await handle.requestPermission({ mode: 'readwrite' }) !== 'granted') {
-                 throw new Error("Permission denied for selected folder.");
-             }
-             logInfo("Permission explicitly granted.");
-        }
-
-
-        outputDirectoryHandle = handle;
-        folderPathP.textContent = `Selected: ${handle.name}`;
-        folderPathP.title = handle.name; // Show full name on hover if truncated
-        folderPathP.classList.remove('text-red-500');
-        logInfo(`Output folder selected and verified: ${handle.name}`);
-        checkCanStart();
-      } catch (error) {
-        // Handle user cancellation gracefully (AbortError)
-         if (error.name === 'AbortError') {
-            logInfo('Folder selection cancelled by user.');
-            // Don't clear existing selection if user cancels
-         } else {
-            logError('Error selecting or verifying folder:', error);
-            updateStatus(`Error selecting folder: ${error.message}`, true);
-            outputDirectoryHandle = null; // Invalidate handle
-            folderPathP.textContent = 'Error selecting folder. Please try again.';
-            folderPathP.title = error.message;
-            folderPathP.classList.add('text-red-500');
-         }
-         checkCanStart(); // Update button state
-      }
-    });
-
-    startBtn.addEventListener('click', async () => {
-      // Re-run checks explicitly before starting
-      checkCanStart(); // Update internal state first
-      if(startBtn.disabled) { // Check if the button *is still disabled* after the check
-         logWarn("Start button clicked but conditions not met.");
-         // Optionally provide more specific feedback based on button title
-         alert(`Cannot start: ${startBtn.title || "Check inputs and selections."}`);
-         return;
-      }
-      await startProcessing();
-    });
-
-    // --- Core Processing Logic ---
-    async function startProcessing() {
-      isProcessing = true;
-      startBtn.disabled = true;
-      startBtn.textContent = "Processing..."; // Change button text
-      logInfo('Starting extraction process...');
-      updateStatus('Preparing...', false, true); // Reset progress
-      etaP.textContent = 'ETA: calculating...';
-      processedFrames = 0;
-      processStartTime = Date.now();
-      currentFileIndex = 0;
-      currentFileProgress = 0;
-      // Disable inputs during processing
-      intervalInput.disabled = true;
-      resolutionSelect.disabled = true;
-      customWidthInput.disabled = true;
-      customHeightInput.disabled = true;
-      selectFolderBtn.disabled = true;
-      fileInput.disabled = true; // Disable hidden file input click
-
-
-      try {
-        // 1. Verify Output Folder Permission again before heavy work
-        if (!outputDirectoryHandle) throw new Error("Output directory handle is missing.");
-         const permissionStatus = await outputDirectoryHandle.queryPermission({ mode: 'readwrite' });
-         if (permissionStatus !== 'granted') {
-            logWarn(`Permission for folder "${outputDirectoryHandle.name}" lost or not granted (${permissionStatus}). Requesting again...`);
-            if (await outputDirectoryHandle.requestPermission({ mode: 'readwrite' }) !== 'granted') {
-                throw new Error(`Permission denied for output folder "${outputDirectoryHandle.name}" before processing.`);
-            }
-            logInfo(`Permission re-granted for "${outputDirectoryHandle.name}".`);
-         }
-
-        // 2. Check/Clear Output Folder
-        if (!(await checkAndClearOutputFolder())) {
-          stopProcessing('User cancelled or failed folder clearing.');
-          return; // User cancelled or error occurred
-        }
-
-        // 3. Estimate total frames and warn (re-estimate with potentially updated metadata)
-        estimateOutputFrames(); // Make sure estimate is current
-        if (totalEstimatedFrames > 10000) {
-            // Find existing warning or use default text
-             const warningText = document.getElementById('frameEstimateWarning')?.textContent || `~${totalEstimatedFrames.toLocaleString()} frames`;
-             // Use a more specific confirmation message
-             if (!confirm(`⚠️ WARNING ⚠️\n\n${warningText}\n\nThis might take a very long time and consume significant resources.\n\nAre you sure you want to continue?`)) {
-                 stopProcessing('User cancelled due to large frame count warning.');
-                 return;
-            }
-             logInfo("User confirmed proceeding with large frame count.");
-        }
-
-        // 4. Process each video file sequentially
-        for (currentFileIndex = 0; currentFileIndex < filesToProcess.length; currentFileIndex++) {
-           const fileItem = filesToProcess[currentFileIndex];
-           currentFileProgress = 0; // Reset progress for this file
-           progressBar.value = Math.round((currentFileIndex / filesToProcess.length) * 100); // Show start progress for this file
-           progressText.textContent = `${progressBar.value}%`;
-
-           updateStatus(`Processing Video ${currentFileIndex + 1}/${filesToProcess.length}: ${fileItem.file.name}`, false, false);
-           // Ensure the current file's info is displayed and highlighted
-            Array.from(fileList.children).forEach((li, index) => {
-                const isCurrentItem = index === currentFileIndex;
-                li.classList.toggle('ring-1', isCurrentItem);
-                li.classList.toggle('ring-blue-500', isCurrentItem);
-            });
-           renderMetadata(fileItem.metadata, fileItem.file.name); // Display cached/fetched info
-
-
-           // Ensure metadata is available and valid (fetch if missing/invalid)
-            if (!fileItem.metadata || fileItem.metadata.error || !fileItem.metadata.resolution || typeof fileItem.metadata.duration !== 'number' || fileItem.metadata.duration <= 0) {
-               logWarn(`Metadata missing or invalid for ${fileItem.file.name}, attempting refetch...`);
-               await displayVideoMetadata(fileItem); // Await metadata fetching again
-               // Check again after refetch
-               if (!fileItem.metadata || fileItem.metadata.error || !fileItem.metadata.resolution || typeof fileItem.metadata.duration !== 'number' || fileItem.metadata.duration <= 0) {
-                   throw new Error(`Cannot process ${fileItem.file.name}: Missing essential metadata (resolution/duration) even after refetch. Check logs.`);
-               }
-               logInfo(`Metadata fetched successfully for ${fileItem.file.name}.`);
-           }
-
-
-           await processSingleVideo(fileItem, currentFileIndex);
-           logInfo(`Finished processing ${fileItem.file.name}`);
-        }
-
-        // 5. Completion
-        const duration = (Date.now() - processStartTime) / 1000;
-        // Final status message
-        const finalMessage = `Extraction complete! ${processedFrames} frames saved from ${filesToProcess.length} video(s) in ${duration.toFixed(1)}s.`;
-        updateStatus(finalMessage, false, false); // Keep progress bar full
-        progressBar.value = 100;
-        progressText.textContent = '100%';
-        etaP.textContent = 'Finished';
-        logInfo(`Extraction complete. Total frames: ${processedFrames}. Duration: ${duration.toFixed(1)}s.`);
-        if (successSound.src && !successSound.src.includes('...')) { // Play sound if src is valid
-            successSound.play().catch(e => logWarn("Could not play success sound:", e));
-        }
-        alert(finalMessage); // Simple alert confirmation
-
-      } catch (error) {
-        logError('Processing failed:', error);
-        updateStatus(`Error during processing: ${error.message}. Check logs.`, true);
-        // Keep progress bar where it failed, maybe? Or reset? Resetting might be less confusing.
-        progressBar.value = 0;
-        progressText.textContent = '0%';
-        etaP.textContent = 'Error';
-        alert(`Processing Error:\n${error.message}\n\nCheck the logs for more details.`); // Alert on error
-      } finally {
-        stopProcessing(); // Reset state regardless of success/failure
-      }
-    }
-
-    function stopProcessing(reason = "Process ended") {
-        logInfo(reason);
-        isProcessing = false;
-        startBtn.textContent = "Start Extraction"; // Restore button text
-         // Re-enable inputs
-         intervalInput.disabled = false;
-         resolutionSelect.disabled = false;
-         customWidthInput.disabled = false;
-         customHeightInput.disabled = false;
-         selectFolderBtn.disabled = false;
-         fileInput.disabled = false;
-        // Don't reset file list or folder on stop, but re-check button state
-        checkCanStart();
-        // Clear any active file highlight in the list
-        Array.from(fileList.children).forEach(li => {
-            li.classList.remove('ring-1', 'ring-blue-500');
-        });
-    }
-
-
-    async function checkAndClearOutputFolder() {
-      if (!outputDirectoryHandle) {
-         logError("Output directory handle is missing during check/clear.");
-         return false;
-      }
-      logInfo(`Checking output folder "${outputDirectoryHandle.name}" for existing .jpg files...`);
-      const existingJpgs = [];
-      try {
-          // Check permission one last time before iterating/deleting
-          const permissionStatus = await outputDirectoryHandle.queryPermission({ mode: 'readwrite' });
-          if (permissionStatus !== 'granted') {
-             throw new Error(`Permission denied for output folder "${outputDirectoryHandle.name}" during check/clear.`);
-          }
-
-
-          for await (const entry of outputDirectoryHandle.values()) {
-              // Only check top-level entries for performance
-              if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.jpg')) {
-                  existingJpgs.push(entry.name);
-                  if (existingJpgs.length >= 5) break; // Stop after finding a few for the prompt
-              }
-          }
-      } catch (error) {
-         logError("Error reading output directory:", error);
-         updateStatus(`Error accessing output folder: ${error.message}. Please re-select the folder.`, true);
-         outputDirectoryHandle = null; // Invalidate handle on error
-         folderPathP.textContent = 'Error accessing folder. Please re-select.';
-         folderPathP.classList.add('text-red-500');
-         checkCanStart();
-         return false; // Cannot proceed
-      }
-
-
-      if (existingJpgs.length > 0) {
-        const fileListSample = existingJpgs.slice(0, 3).join(', ') + (existingJpgs.length > 3 ? '...' : '');
-        logWarn(`Output folder contains existing JPG files: ${fileListSample}`);
-        // Make confirm message clearer about consequences
-        if (confirm(`DELETE FILES?\n\nThe selected output folder "${outputDirectoryHandle.name}" already contains JPG files (e.g., ${fileListSample}).\n\nDo you want to DELETE ALL .jpg files in this folder before extraction?\n\n*** THIS ACTION CANNOT BE UNDONE! ***`)) {
-          logInfo('User confirmed deletion of existing .jpg files.');
-          updateStatus('Deleting existing .jpg files... (can take time)', false, false);
-          let deleteCount = 0;
-          const deleteStartTime = Date.now();
-          try {
-              // Create a copy of keys to iterate over, as removing entries while iterating can cause issues
-              const keysToDelete = [];
-              for await (const entry of outputDirectoryHandle.values()) {
-                 if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.jpg')) {
-                    keysToDelete.push(entry.name);
-                 }
-              }
-
-              logInfo(`Found ${keysToDelete.length} .jpg files to delete.`);
-               if (keysToDelete.length === 0) {
-                  logInfo("No .jpg files actually found on second pass (should not happen?). Proceeding.");
-                  return true;
-               }
-
-              for (const key of keysToDelete) {
-                  try {
-                      await outputDirectoryHandle.removeEntry(key);
-                      deleteCount++;
-                  } catch (removeError) {
-                      // Log specific file delete error but attempt to continue
-                      logError(`Failed to delete file "${key}": ${removeError.message}`);
-                      if (!confirm(`Failed to delete "${key}".\nContinue deleting other files?`)) {
-                         throw new Error(`User aborted deletion after error on file: ${key}`);
-                      }
-                  }
-
-                 // Update status occasionally during deletion if many files
-                  if (deleteCount % 100 === 0) {
-                     updateStatus(`Deleting... (${deleteCount}/${keysToDelete.length})`, false, false);
-                     await new Promise(resolve => setTimeout(resolve, 0)); // Yield
-                  }
-              }
-              const deleteDuration = (Date.now() - deleteStartTime) / 1000;
-              logInfo(`Attempted deletion of ${keysToDelete.length} files. Successfully deleted ${deleteCount} existing .jpg files in ${deleteDuration.toFixed(1)}s.`);
-              if(deleteCount < keysToDelete.length) {
-                 logWarn(`Failed to delete ${keysToDelete.length - deleteCount} files. Check permissions or logs.`);
-                 // Decide if this is a critical failure
-                 // return false;
-              }
-          } catch (error) {
-             logError("Critical error during file deletion process:", error);
-             updateStatus(`Error deleting files: ${error.message}. Cannot proceed safely.`, true);
-             return false; // Cannot proceed safely
-          }
-        } else {
-          logInfo('User chose not to delete existing files. Aborting extraction.');
-          updateStatus('Extraction cancelled by user (folder not cleared).', true);
-          return false; // User cancelled
-        }
+    } catch (err) {
+      console.error('Error during module import or FFmpeg operation:', err);
+      const errorMsg = `An error occurred: ${err.stack || err.toString()}`;
+      errorLogElement.textContent += `\n[Error] ${errorMsg}\n---------------\n`;
+      if (err.message && (err.message.includes("import") || err.message.includes("Failed to fetch dynamically imported module"))) {
+          statusElement.textContent = "Error importing local FFmpeg library. Check path/file existence (using index.js).";
+      } else if (statusElement.textContent.includes("Loading")) {
+          statusElement.textContent = "Error loading FFmpeg core/worker. Check local paths (core & worker paths should be relative to index.js).";
       } else {
-        logInfo('Output folder is clear of .jpg files.');
+          statusElement.textContent = "Error during processing. Check error log.";
       }
-      return true; // Folder is ready
     }
-
-    async function processSingleVideo(fileItem, fileIndex) {
-        const { file, id, metadata } = fileItem;
-        // Sanitize file name for use in virtual FS path, prevent issues with weird chars
-        const safeBaseName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const inputFilename = `${id}_${safeBaseName}`;
-        // Use a temporary directory per video
-        const tempOutputDir = `out_${id}`;
-        const outputPattern = `${tempOutputDir}/frame_%07d.jpg`; // Use 7 digits for potentially long videos
-        const interval = parseFloat(intervalInput.value);
-        const resolutionMode = resolutionSelect.value;
-
-
-        try {
-            // 0. Ensure temporary output directory exists and is empty (clean up from previous runs if necessary)
-             try { await ffmpeg.deleteDir(tempOutputDir); logInfo(`Cleaned up existing virtual dir: ${tempOutputDir}`); } catch(e){/* ignore if not exists */}
-             await ffmpeg.createDir(tempOutputDir);
-             logInfo(`Created temporary virtual directory: ${tempOutputDir}`);
-
-            // 1. Write video to FFmpeg's virtual file system
-            logInfo(`Writing ${file.name} (${formatBytes(file.size)}) to virtual FS as ${inputFilename}`);
-            const data = new Uint8Array(await file.arrayBuffer());
-
-            // Check for existing file before writing (shouldn't happen with unique IDs, but safety)
-             try { await ffmpeg.deleteFile(inputFilename); logWarn(`Deleted existing virtual file ${inputFilename} before writing.`);} catch(e){/*ignore*/}
-
-            await ffmpeg.writeFile(inputFilename, data);
-            logInfo(`Finished writing ${inputFilename}`);
-
-            // 2. Construct FFmpeg command
-            // Base command, hide banner for cleaner logs
-            const command = ['-hide_banner', '-i', inputFilename];
-
-            // Frame rate filter
-            // Ensure interval is passed correctly as string for fps filter
-            command.push('-vf', `fps=1/${interval.toString()}`);
-
-            // Resolution scaling
-            let scaleFilter = '';
-            if (resolutionMode === 'half' || resolutionMode === 'custom') {
-                let targetWidth, targetHeight;
-                const resParts = metadata.resolution?.split('x').map(Number);
-                if (!resParts || resParts.length !== 2 || isNaN(resParts[0]) || isNaN(resParts[1]) || resParts[0] <=0 || resParts[1] <= 0) {
-                     throw new Error(`Invalid original resolution format found in metadata: ${metadata.resolution}`);
-                }
-                const [originalWidth, originalHeight] = resParts;
-
-                if (resolutionMode === 'half') {
-                    targetWidth = Math.max(1, Math.floor(originalWidth / 2));
-                    targetHeight = Math.max(1, Math.floor(originalHeight / 2));
-                    // Ensure even dimensions for compatibility, ensure > 0
-                    targetWidth = (targetWidth % 2 === 0) ? targetWidth : Math.max(2, targetWidth - 1);
-                    targetHeight = (targetHeight % 2 === 0) ? targetHeight : Math.max(2, targetHeight - 1);
-                } else { // Custom
-                    targetWidth = parseInt(customWidthInput.value);
-                    targetHeight = parseInt(customHeightInput.value);
-                     if (isNaN(targetWidth) || targetWidth < 1 || isNaN(targetHeight) || targetHeight < 1) {
-                         throw new Error(`Invalid custom dimensions provided: ${customWidthInput.value}x${customHeightInput.value}`);
-                     }
-                     // Ensure even dimensions here too? Maybe not strictly needed for jpg but safer.
-                     // targetWidth = (targetWidth % 2 === 0) ? targetWidth : Math.max(2, targetWidth + 1); // or -1?
-                     // targetHeight = (targetHeight % 2 === 0) ? targetHeight : Math.max(2, targetHeight + 1);
-                }
-                 // Add scale filter to the -vf chain if needed
-                 // Existing vf: fps=...
-                 command[command.indexOf('fps=1/'+interval.toString())] += `,scale=${targetWidth}:${targetHeight}`;
-                 logInfo(`Applying scale filter: ${targetWidth}x${targetHeight} via -vf`);
-            } else {
-                logInfo('Using full original resolution.');
-            }
-
-
-             // Output options: High quality JPG, temporary sequential naming
-             // Use -qscale:v for broader compatibility than -q:v
-            command.push('-qscale:v', '2'); // Quality 2 (1=best, 31=worst) for JPEG
-            // Output pattern using the temp directory
-            command.push(outputPattern);
-            logInfo('Generated ffmpeg command:', command.join(' '));
-
-
-            // 3. Execute FFmpeg
-            updateStatus(`Transcoding Video ${fileIndex + 1}/${filesToProcess.length}... (0%)`, false, false);
-            logInfo(`Executing ffmpeg for ${inputFilename}...`);
-            // Add timeout? FFmpeg.wasm doesn't support it directly in exec.
-            // A wrapper could be built, but adds complexity. User closes tab to abort.
-            await ffmpeg.exec(command);
-            logInfo(`ffmpeg execution finished for ${inputFilename}. Exit code presumed 0 (success).`);
-
-            // 4. Read frames from temp dir, rename, and write to output directory
-            updateStatus(`Saving frames for ${file.name}...`, false, false);
-            logInfo(`Listing directory content after exec: ${tempOutputDir}`);
-            const files = await ffmpeg.listDir(tempOutputDir);
-            // logInfo(files.map(f => f.name)); // Can be very long
-
-            // Filter only files matching the expected pattern
-            const frameFiles = files.filter(f => !f.isDir && f.name.startsWith(`frame_`) && f.name.endsWith('.jpg'));
-            logInfo(`Found ${frameFiles.length} frame files in ${tempOutputDir}.`);
-
-            if (frameFiles.length === 0) {
-                logWarn(`No frame files generated for ${file.name}. Check ffmpeg logs above. Video might be too short for interval or processing failed silently.`);
-                // Don't throw error, just log, might be intended.
-            }
-
-            // Sort numerically to ensure correct timestamp calculation, though %07d helps
-             frameFiles.sort((a, b) => {
-                 const numA = parseInt(a.name.match(/_(\d{7})\.jpg$/)?.[1] || '0');
-                 const numB = parseInt(b.name.match(/_(\d{7})\.jpg$/)?.[1] || '0');
-                 return numA - numB;
-             });
-
-
-            for (let i = 0; i < frameFiles.length; i++) {
-                const frameFilename = frameFiles[i].name;
-                const fullVirtualPath = `${tempOutputDir}/${frameFilename}`;
-                const frameNumberMatch = frameFilename.match(/_(\d{7})\.jpg$/);
-
-                if (!frameNumberMatch) {
-                    logWarn(`Could not parse frame number from ${frameFilename}, skipping.`);
-                    continue;
-                }
-                const frameSequence = parseInt(frameNumberMatch[1], 10); // FFmpeg's 1-based sequence number
-
-                 // Calculate timestamp: Time = (frame_index - 1) * interval seconds
-                 const timestampSeconds = Math.max(0, (frameSequence - 1) * interval);
-                 const finalFilename = formatTimestampFilename(fileIndex + 1, timestampSeconds); // Use 1-based index for video number
-
-                try {
-                    // Read frame data from virtual FS
-                    // logInfo(`Reading virtual file: ${fullVirtualPath}`); // Too verbose
-                    const frameData = await ffmpeg.readFile(fullVirtualPath);
-                    // logInfo(`Read ${formatBytes(frameData.length)} for ${frameFilename}`);
-
-                    // Get a handle to the output file in the real FS
-                    // logInfo(`Getting file handle for: ${finalFilename}`);
-                    const fileHandle = await outputDirectoryHandle.getFileHandle(finalFilename, { create: true });
-
-                    // Create a writable stream
-                    // logInfo(`Creating writable stream for: ${finalFilename}`);
-                    const writable = await fileHandle.createWritable();
-
-                    // Write the contents of the file to the stream.
-                    // logInfo(`Writing data to: ${finalFilename}`);
-                    await writable.write(frameData);
-
-                    // Close the file and write the contents to disk.
-                    // logInfo(`Closing file: ${finalFilename}`);
-                    await writable.close();
-
-                    processedFrames++;
-
-                    // Don't delete frame from virtual FS immediately - batch delete later for performance
-
-                     // Update status occasionally to avoid flooding, show file name being written
-                     // Update progress more granularly during save?
-                    const saveProgress = (i + 1) / frameFiles.length; // Progress within the saving phase
-                    const overallProgressWithinFile = 0.5 + (saveProgress * 0.5); // Assume exec is 50%, save is 50%
-                    const numFiles = filesToProcess.length || 1;
-                    const filesCompletedRatio = currentFileIndex / numFiles;
-                    const currentFileContribution = (1 / numFiles) * overallProgressWithinFile;
-                    const overallTotalProgress = filesCompletedRatio + currentFileContribution;
-                    progressBar.value = Math.min(100, Math.max(0, Math.round(overallTotalProgress * 100)));
-                    progressText.textContent = `${progressBar.value}%`;
-
-                     if (i % 20 === 0 || i === frameFiles.length - 1) {
-                        updateStatus(`Saving frame ${i+1}/${frameFiles.length} (${finalFilename})`, false, false);
-                        // Yield to event loop briefly if many files, allows UI updates
-                         await new Promise(resolve => setTimeout(resolve, 0));
-                     }
-
-                } catch (writeError) {
-                    logError(`Failed to write frame ${finalFilename}:`, writeError);
-                    // Decide whether to continue or abort
-                    if (!confirm(`Error writing frame ${finalFilename} to the output folder.\n\nError: ${writeError.message}\n\nContinue processing other frames for this video?`)) {
-                        throw new Error(`User aborted after write error: ${writeError.message}`);
-                    }
-                    // If continuing, log and move to next frame
-                    logWarn(`Continuing processing after write error for ${finalFilename}.`);
-                }
-            }
-            logInfo(`Finished saving frames for ${file.name}. Total saved in this step: ${frameFiles.length}.`);
-
-
-        } catch (execError) {
-            logError(`ffmpeg processing failed for ${file.name}:`, execError);
-            // Check if error contains stderr details already
-             const errorMessage = execError.message || execError.toString();
-             // Check fferr logs in the main log area for more clues.
-            throw new Error(`Processing failed for ${file.name}. Check logs for details. Error: ${errorMessage}`); // Re-throw to stop overall process
-        } finally {
-            // 5. Clean up input file and temp output dir from virtual FS
-            logInfo(`Cleaning up virtual files for ID ${id}...`);
-            try {
-                await ffmpeg.deleteFile(inputFilename);
-                logInfo(`Deleted virtual input: ${inputFilename}`);
-            } catch (cleanupError) {
-                // Don't warn if file didn't exist (e.g., write failed)
-                 if (!cleanupError.message.includes("doesn't exist")) {
-                    logWarn(`Could not clean up virtual input file ${inputFilename}:`, cleanupError);
-                 }
-            }
-            try {
-                 await ffmpeg.deleteDir(tempOutputDir);
-                 logInfo(`Deleted temporary virtual directory: ${tempOutputDir}`);
-            } catch (cleanupError) {
-                // Don't warn if dir didn't exist
-                 if (!cleanupError.message.includes("doesn't exist")) {
-                    logWarn(`Could not clean up virtual output directory ${tempOutputDir}:`, cleanupError);
-                 }
-            }
-        }
-    }
-
-
-    // --- Utility Functions ---
-    function formatBytes(bytes, decimals = 2) {
-      if (bytes == null || !isFinite(bytes) || bytes < 0) return '0 Bytes'; // More robust check
-      if (bytes === 0) return '0 Bytes';
-      const k = 1024;
-      const dm = decimals < 0 ? 0 : decimals;
-      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      // Ensure i is within bounds
-       const index = Math.max(0, Math.min(i, sizes.length - 1));
-      return parseFloat((bytes / Math.pow(k, index)).toFixed(dm)) + ' ' + sizes[index];
-    }
-
-     function generateSimpleId() {
-        // Simple random ID, sufficient for session uniqueness
-        return Math.random().toString(36).substring(2, 9);
-     }
-
-     function formatTimestampFilename(videoIndex, seconds) {
-        const vidNum = String(videoIndex).padStart(2, '0'); // video_01, video_02, etc.
-
-        // Ensure seconds is non-negative and finite
-        const safeSeconds = (seconds == null || !isFinite(seconds) || seconds < 0) ? 0 : seconds;
-
-        const totalSecondsFloor = Math.floor(safeSeconds);
-        const milliseconds = Math.round((safeSeconds - totalSecondsFloor) * 1000);
-
-        // Handle potential rollover if milliseconds rounds up to 1000
-        const adjustedTotalSeconds = totalSecondsFloor + Math.floor(milliseconds / 1000);
-        const finalMilliseconds = milliseconds % 1000;
-
-        // Prevent excessively large numbers if duration was huge/invalid
-        const hours = Math.min(99, Math.floor(adjustedTotalSeconds / 3600));
-        const minutes = Math.floor((adjustedTotalSeconds % 3600) / 60);
-        const secs = adjustedTotalSeconds % 60;
-
-        const hh = String(hours).padStart(2, '0');
-        const mm = String(minutes).padStart(2, '0');
-        const ss = String(secs).padStart(2, '0');
-        const ms = String(finalMilliseconds).padStart(3, '0');
-
-        // Max filename length check? Most OS handle 255 bytes/chars. This format is well within limits.
-        return `video_${vidNum}__${hh}-${mm}-${ss}.${ms}.jpg`;
-     }
-
-    // --- Initial Load ---
-    document.addEventListener('DOMContentLoaded', () => {
-      // Ensure log area exists before logging
-      if (errorLog) {
-         const logHeader = "Console Logs & Errors:\n----------------------";
-         errorLog.textContent = logHeader;
-         logInfo('DOM loaded. Starting FFmpeg initialization.');
-      } else {
-         console.log('DOM loaded. Starting FFmpeg initialization. (Log area not found yet)');
-      }
-      loadFFmpeg(); // Start loading FFmpeg automatically
-      if (statusDiv) updateStatus('Loading FFmpeg library...');
-      if (etaP) etaP.textContent = 'ETA: -';
-      // Initial check for start button state and tooltips
-      checkCanStart();
-
-    });
-
-     // --- PWA Service Worker Registration ---
-     if ('serviceWorker' in navigator) {
-       window.addEventListener('load', () => {
-         navigator.serviceWorker.register('./sw.js') // Assuming sw.js is in the same directory
-           .then(registration => {
-             logInfo('ServiceWorker registration successful with scope: ', registration.scope);
-             // Optional: Check for updates periodically or on reload
-             // registration.update(); // Check for update on load
-             registration.onupdatefound = () => {
-                const installingWorker = registration.installing;
-                if (installingWorker) {
-                    installingWorker.onstatechange = () => {
-                        if (installingWorker.state === 'installed') {
-                            if (navigator.serviceWorker.controller) {
-                                // New update available
-                                logInfo('New content is available; please refresh.');
-                                // Optional: Show a notification/button to refresh
-                                // if(confirm("New version available. Reload now?")) { window.location.reload(); }
-                            } else {
-                                // Content cached for offline
-                                logInfo('Content is cached for offline use.');
-                            }
-                        }
-                    };
-                }
-             };
-           })
-           .catch(error => {
-             logError('ServiceWorker registration failed: ', error);
-              updateStatus('Warning: Could not register Service Worker for offline use.', true, false);
-           });
-
-           // Optional: Detect if running as PWA
-           if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
-               logInfo('Running as standalone PWA.');
-           }
-       });
-     } else {
-         logWarn('Service Workers not supported in this browser. Offline functionality disabled.');
-     }
-
   </script>
-
 </body>
 </html>
