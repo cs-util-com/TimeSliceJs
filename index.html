@@ -324,10 +324,16 @@
             }
         }
 
+        function formatTimestamp(seconds) {
+            const min = Math.floor(seconds / 60);
+            const sec = (seconds % 60).toFixed(2);
+            return `00:${String(min).padStart(2,'0')}:${sec.padStart(5,'0')}`;
+        }
+
         async function extractFrame(inputFilename, timestamp, outputFilename) {
             updateStatus(`Extracting frame at ${timestamp} seconds...`);
-            const formattedTime = `00:00:${String(timestamp).padStart(2, '0')}`;
-            await ffmpeg.exec(['-i', inputFilename, '-ss', formattedTime, '-vframes', '1', outputFilename]);
+            const formattedTime = formatTimestamp(timestamp);
+            await ffmpeg.exec(['-ss', formattedTime, '-i', inputFilename, '-vframes', '1', outputFilename]);
             console.log(`${outputFilename} extracted.`);
         }
 
