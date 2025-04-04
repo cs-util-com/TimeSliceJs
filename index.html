@@ -75,7 +75,7 @@
     // in the './ffmpeg-assets/' directory relative to index.html
     const ffmpegPath = './ffmpeg-assets/index.js';
     const corePath = './ffmpeg-assets/ffmpeg-core.js';
-    const workerPath = './ffmpeg-assets/worker.js'; // Path to the ESM worker
+    const workerPath = './worker.js';
 
     try {
       // --- Import necessary items from the LOCAL ESM library build ---
@@ -116,6 +116,7 @@
         classWorkerURL: workerPath 
       });
       console.log('FFmpeg core and worker loaded successfully via ffmpeg.load()');
+      console.log('>>> ffmpeg.load() promise resolved successfully! <<<');
       statusElement.textContent = "FFmpeg core loaded.";
 
       // --- Start FFmpeg processing ---
@@ -162,7 +163,7 @@
       if (err.message && (err.message.includes("import") || err.message.includes("Failed to fetch dynamically imported module"))) {
           statusElement.textContent = "Error importing local FFmpeg library. Check path/file existence (using index.js).";
       } else if (statusElement.textContent.includes("Loading")) {
-          statusElement.textContent = "Error loading FFmpeg core/worker. Check local paths and file existence.";
+          statusElement.textContent = "Error loading FFmpeg core/worker. Check local paths (worker path should be relative to index.js).";
       } else {
           statusElement.textContent = "Error during processing. Check error log.";
       }
