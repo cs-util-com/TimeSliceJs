@@ -73,13 +73,13 @@
     // - ffmpeg-core.js   (from @ffmpeg/core/dist/esm/)
     // - ffmpeg-core.wasm (from @ffmpeg/core/dist/esm/)
     // in the './ffmpeg-assets/' directory relative to index.html
-    const ffmpegPath = './ffmpeg-assets/ffmpeg.js';
+    const ffmpegPath = './ffmpeg-assets/index.js';
     const corePath = './ffmpeg-assets/ffmpeg-core.js';
     const workerPath = './ffmpeg-assets/worker.js'; // Path to the ESM worker
 
     try {
       // --- Import necessary items from the LOCAL ESM library build ---
-      // Reverted back to dynamic import
+      console.log(`Attempting to import FFmpeg library from: ${ffmpegPath}`);
       const { FFmpeg } = await import(ffmpegPath);
       console.log('FFmpeg ESM module imported successfully.');
       statusElement.textContent = "FFmpeg library imported. Initializing...";
@@ -159,8 +159,8 @@
       console.error('Error during module import or FFmpeg operation:', err);
       const errorMsg = `An error occurred: ${err.stack || err.toString()}`;
       errorLogElement.textContent += `\n[Error] ${errorMsg}\n---------------\n`;
-      if (err.message && err.message.includes("import")) {
-          statusElement.textContent = "Error importing local FFmpeg library. Check path/file existence.";
+      if (err.message && (err.message.includes("import") || err.message.includes("Failed to fetch dynamically imported module"))) {
+          statusElement.textContent = "Error importing local FFmpeg library. Check path/file existence (using index.js).";
       } else if (statusElement.textContent.includes("Loading")) {
           statusElement.textContent = "Error loading FFmpeg core/worker. Check local paths and file existence.";
       } else {
