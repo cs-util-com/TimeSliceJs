@@ -243,7 +243,7 @@
                 const fileHandle = await directoryHandle.getFileHandle(filename, { create: true });
                 const blob = new Blob([frameData.buffer], { type: 'image/jpeg' });
                 await writeFile(fileHandle, blob);
-                console.log(`Saved ${filename} to folder`);
+                // console.log(`Saved ${filename} to folder`);
                 return true;
             } catch (error) {
                 // If we get a permission error at this point, it likely means permission was revoked
@@ -300,10 +300,10 @@
 
                 ffmpeg = new FFmpeg();
 
-                // Optional: Listen for logs from FFmpeg
-                ffmpeg.on('log', ({ type, message }) => {
-                    console.log(`[ffmpeg ${type}] ${message}`);
-                });
+                // Optional: Remove ffmpeg on log for less spam
+                // ffmpeg.on('log', ({ type, message }) => {
+                //     console.log(`[ffmpeg ${type}] ${message}`);
+                // });
 
                 updateStatus("Loading FFmpeg core (this may take a moment)...");
                 console.log("Loading core/worker with paths:", { coreURL: corePath, classWorkerURL: workerPath });
@@ -333,8 +333,8 @@
         async function extractFrame(inputFilename, timestamp, outputFilename) {
             updateStatus(`Extracting frame at ${timestamp} seconds...`);
             const formattedTime = formatTimestamp(timestamp);
-            await ffmpeg.exec(['-ss', formattedTime, '-i', inputFilename, '-vframes', '1', outputFilename]);
-            console.log(`${outputFilename} extracted.`);
+            await ffmpeg.exec(['-hide_banner', '-loglevel', 'warning', '-ss', formattedTime, '-i', inputFilename, '-vframes', '1', outputFilename]);
+            // console.log(`${outputFilename} extracted.`);
         }
 
         async function getVideoDuration(file) {
