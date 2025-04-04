@@ -2,9 +2,15 @@ const CACHE_NAME = 'timeslicejs-v1';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/ffmpeg-assets/index.js',
-  '/ffmpeg-core.js',
-  '/worker.js'
+  '/ffmpeg-assets/classes.js',
+  '/ffmpeg-assets/const.js',
+  '/ffmpeg-assets/errors.js',
+  '/ffmpeg-assets/ffmpeg-core.js',
+  '/ffmpeg-assets/ffmpeg-core.wasm',
+  '/ffmpeg-assets/index.js',  
+  '/ffmpeg-assets/types.js',
+  '/ffmpeg-assets/utils.js',
+  '/ffmpeg-assets/worker.js',
 ];
 
 // Install service worker

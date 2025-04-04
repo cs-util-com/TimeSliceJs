@@ -2,795 +2,172 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TimeSliceJS - Video Frame Extractor</title>
-  <!-- Tailwind CSS via CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            dark: {
-              bg: '#121212',
-              surface: '#1E1E1E',
-              accent: '#3B82F6'
-            }
-          }
-        }
-      }
+  <title>ffmpeg.wasm Demo – WebM to MP4 (ESM - Self-Hosted)</title>
+  <!-- Scripts are loaded via local ES Module import -->
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 0 20px;
     }
-  </script>
-  <!-- PWA manifest inline -->
-  <script type="application/manifest+json">
-    {
-      "name": "TimeSliceJS",
-      "short_name": "TimeSliceJS",
-      "description": "Video Frame Extractor",
-      "display": "standalone",
-      "background_color": "#121212",
-      "theme_color": "#3B82F6",
-      "start_url": "."
+    #status {
+      margin: 20px 0;
+      font-weight: bold;
     }
-  </script>
+    #progressBar {
+      width: 100%;
+      max-width: 400px;
+      margin: 10px 0;
+    }
+    #outputVideo {
+      max-width: 100%;
+      margin: 20px 0;
+    }
+    #errorLog {
+      color: red;
+      white-space: pre-wrap;
+      background: #f8f8f8;
+      padding: 10px;
+      border-radius: 4px;
+      display: block; /* Make sure errors are visible by default */
+      border: 1px solid #ddd;
+      margin-top: 10px;
+    }
+  </style>
 </head>
-<body class="bg-dark-bg text-gray-200 min-h-screen">
-  <main class="container mx-auto px-4 py-8 max-w-5xl">
-    <h1 class="text-3xl font-bold mb-6 text-center text-blue-400">TimeSliceJS - Video Frame Extractor</h1>
-    
-    <!-- Status bar -->
-    <div id="status" class="mb-6 p-4 bg-dark-surface rounded-lg text-center font-semibold">
-      Initializing...
-    </div>
-    
-    <!-- Video Upload Section -->
-    <section id="uploadSection" class="mb-8">
-      <div id="dropArea" class="border-2 border-dashed border-blue-500 rounded-lg p-12 text-center cursor-pointer transition-colors hover:bg-blue-900/20">
-        <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-        </svg>
-        <p class="mt-4">Drop video files here or click to browse</p>
-        <input type="file" id="fileInput" class="hidden" multiple accept="video/*">
-      </div>
-      
-      <!-- Video List -->
-      <div id="videoList" class="mt-4 hidden">
-        <h3 class="text-lg font-medium mb-2">Selected Videos:</h3>
-        <ul id="videoFiles" class="space-y-2 bg-dark-surface p-4 rounded-lg"></ul>
-      </div>
-    </section>
-    
-    <!-- Video Metadata -->
-    <section id="metadataSection" class="mb-8 hidden bg-dark-surface p-4 rounded-lg">
-      <h3 class="text-lg font-medium mb-2">Video Metadata:</h3>
-      <div id="metadataContent" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
-    </section>
-    
-    <!-- Extraction Controls -->
-    <section id="controlsSection" class="mb-8 bg-dark-surface p-6 rounded-lg hidden">
-      <h3 class="text-lg font-medium mb-4">Frame Extraction Settings</h3>
-      
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <!-- Interval -->
-        <div>
-          <label for="interval" class="block mb-2">Time Interval (seconds):</label>
-          <input type="number" id="interval" class="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2" 
-                min="0.01" step="0.01" value="0.5">
-        </div>
-        
-        <!-- Resolution Options -->
-        <div>
-          <label class="block mb-2">Frame Resolution:</label>
-          <div class="space-y-2">
-            <div>
-              <input type="radio" id="fullRes" name="resolution" value="full" checked>
-              <label for="fullRes" class="ml-2">Full (Original Resolution)</label>
-            </div>
-            <div>
-              <input type="radio" id="halfRes" name="resolution" value="half">
-              <label for="halfRes" class="ml-2">Half Resolution</label>
-            </div>
-            <div>
-              <input type="radio" id="customRes" name="resolution" value="custom">
-              <label for="customRes" class="ml-2">Custom Dimensions</label>
-            </div>
-            
-            <!-- Custom Resolution Fields -->
-            <div id="customResFields" class="mt-2 grid grid-cols-2 gap-2 hidden">
-              <div>
-                <label for="customWidth" class="text-sm">Width:</label>
-                <input type="number" id="customWidth" class="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2" min="16">
-              </div>
-              <div>
-                <label for="customHeight" class="text-sm">Height:</label>
-                <input type="number" id="customHeight" class="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2" min="16">
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Output Folder -->
-      <div class="mt-6">
-        <label class="block mb-2">Output Folder:</label>
-        <div class="flex items-center">
-          <span id="selectedFolder" class="flex-1 bg-gray-800 border border-gray-700 rounded-md px-3 py-2 truncate">
-            No folder selected
-          </span>
-          <button id="selectFolder" class="ml-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md">
-            Select Folder
-          </button>
-        </div>
-      </div>
-      
-      <!-- Start Extraction -->
-      <div class="mt-8 text-center">
-        <button id="startExtraction" class="bg-green-600 hover:bg-green-700 px-6 py-3 rounded-md font-medium disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-          Start Frame Extraction
-        </button>
-      </div>
-    </section>
-    
-    <!-- Progress Section -->
-    <section id="progressSection" class="mb-8 bg-dark-surface p-6 rounded-lg hidden">
-      <h3 class="text-lg font-medium mb-4">Extraction Progress</h3>
-      
-      <div class="mb-4">
-        <div class="flex justify-between mb-1">
-          <span id="progressText">0%</span>
-          <span id="timeRemaining">Estimating time remaining...</span>
-        </div>
-        <div class="w-full bg-gray-700 rounded-full h-4">
-          <div id="progressBar" class="bg-blue-600 h-4 rounded-full" style="width: 0%"></div>
-        </div>
-      </div>
-      
-      <div id="currentOperation" class="text-sm text-gray-400"></div>
-    </section>
-    
-    <!-- Completion Message -->
-    <div id="completionMessage" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
-      <div class="bg-dark-surface p-8 rounded-lg max-w-md text-center">
-        <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-16 w-16 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-        </svg>
-        <h3 class="text-xl font-bold mt-4">Extraction Complete!</h3>
-        <p class="mt-2" id="extractionStats"></p>
-        <button id="closeCompletionMessage" class="mt-6 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-md">
-          Close
-        </button>
-      </div>
-    </div>
-    
-    <!-- Error Log (hidden by default) -->
-    <pre id="errorLog" class="hidden bg-red-900/20 border border-red-800 p-4 rounded-lg whitespace-pre-wrap mt-8"></pre>
-  </main>
+<body>
+  <h1>WebM to MP4 Transcoder (ESM Load - Self-Hosted Assets)</h1>
+  <div id="status">Initializing...</div>
+  <progress id="progressBar" value="0" max="100"></progress>
+  <video id="outputVideo" controls></video>
+  <pre id="errorLog">Error Log:
+---------------
+</pre>
 
-  <!-- Main script -->
+  <!-- REMOVED the UMD script tag and the __webpack_public_path__ script -->
+
+  <!-- Main script reverted to type="module" -->
   <script type="module">
-    // Global variables
-    let ffmpeg = null;
-    let videoFiles = [];
-    let selectedFolderHandle = null;
-    let extractionInProgress = false;
-    
-    // DOM Elements
-    const statusElement = document.getElementById('status');
+    // REMOVED async IIFE wrapper as it's not needed for type=module
     const errorLogElement = document.getElementById('errorLog');
-    const dropArea = document.getElementById('dropArea');
-    const fileInput = document.getElementById('fileInput');
-    const videoListSection = document.getElementById('videoList');
-    const videoFilesElement = document.getElementById('videoFiles');
-    const metadataSection = document.getElementById('metadataSection');
-    const metadataContent = document.getElementById('metadataContent');
-    const controlsSection = document.getElementById('controlsSection');
-    const customResRadio = document.getElementById('customRes');
-    const customResFields = document.getElementById('customResFields');
-    const selectFolderBtn = document.getElementById('selectFolder');
-    const selectedFolderElement = document.getElementById('selectedFolder');
-    const startExtractionBtn = document.getElementById('startExtraction');
-    const progressSection = document.getElementById('progressSection');
-    const progressBar = document.getElementById('progressBar');
-    const progressText = document.getElementById('progressText');
-    const timeRemaining = document.getElementById('timeRemaining');
-    const currentOperation = document.getElementById('currentOperation');
-    const completionMessage = document.getElementById('completionMessage');
-    const extractionStats = document.getElementById('extractionStats');
-    const closeCompletionBtn = document.getElementById('closeCompletionMessage');
-    
+    const statusElement = document.getElementById('status');
+
     // Global error handler
     window.onerror = function(message, source, lineno, colno, error) {
       console.error("[Global Error Handler]", message, source, lineno, colno, error);
       errorLogElement.textContent += `\n[Global Error] ${message}\n  Source: ${source}\n  Line: ${lineno}, Col: ${colno}\n  Error Obj: ${error ? error.stack || error : 'N/A'}\n---------------\n`;
-      errorLogElement.classList.remove('hidden');
       if (!statusElement.textContent.startsWith("Error")) {
-        statusElement.textContent = "A critical error occurred. Check error log.";
+          statusElement.textContent = "A critical error occurred. Check error log.";
       }
       return false;
     };
 
-    // Initialization
-    async function init() {
-      try {
-        console.log('Module script executing...');
-        statusElement.textContent = "Importing FFmpeg library...";
+    console.log('Module script executing...');
+    statusElement.textContent = "Importing FFmpeg library (Local ESM)...";
 
-        // Configure paths for ffmpeg assets
-        const ffmpegPath = './ffmpeg-assets/index.js';
-        const corePath = './ffmpeg-core.js';
-        const workerPath = './worker.js';
+    // --- Define LOCAL paths for ESM build ---
+    // IMPORTANT: Ensure you have the ESM versions of:
+    // - ffmpeg.js        (from @ffmpeg/ffmpeg/dist/esm/)
+    // - worker.js        (from @ffmpeg/ffmpeg/dist/esm/) <-- Needed for classWorkerURL
+    // - ffmpeg-core.js   (from @ffmpeg/core/dist/esm/)
+    // - ffmpeg-core.wasm (from @ffmpeg/core/dist/esm/)
+    // in the './ffmpeg-assets/' directory relative to index.html
+    const ffmpegPath = './ffmpeg-assets/index.js';
+    const corePath = './ffmpeg-core.js';
+    const workerPath = './worker.js';
 
-        // Import FFmpeg from the local ESM library
-        console.log(`Attempting to import FFmpeg library from: ${ffmpegPath}`);
-        const { FFmpeg } = await import(ffmpegPath);
-        console.log('FFmpeg ESM module imported successfully.');
-        statusElement.textContent = "FFmpeg library imported. Initializing...";
+    try {
+      // --- Import necessary items from the LOCAL ESM library build ---
+      console.log(`Attempting to import FFmpeg library from: ${ffmpegPath}`);
+      const { FFmpeg } = await import(ffmpegPath);
+      console.log('FFmpeg ESM module imported successfully.');
+      statusElement.textContent = "FFmpeg library imported. Initializing...";
 
-        // Instantiate FFmpeg
-        ffmpeg = new FFmpeg();
-        console.log('FFmpeg instance created.');
+      // --- Instantiate the FFmpeg class ---
+      // Removed corePath from here, will be specified in load()
+      const ffmpeg = new FFmpeg();
+      console.log('FFmpeg instance created.');
 
-        // Event handlers for FFmpeg
-        ffmpeg.on('progress', ({ progress, time }) => {
-          if (extractionInProgress) {
-            const percent = Math.round(progress * 100);
-            progressBar.style.width = `${percent}%`;
-            progressText.textContent = `${percent}%`;
-            
-            // Update time remaining if available
-            if (time) {
-              const remainingTime = formatTime(time);
-              timeRemaining.textContent = `Estimated time remaining: ${remainingTime}`;
-            }
-          }
-        });
-        
-        ffmpeg.on('log', ({ type, message }) => {
-          console.log(`[ffmpeg ${type}] ${message}`);
-          if (type === 'info' && extractionInProgress) {
-            currentOperation.textContent = message;
-          }
-        });
-
-        // Load FFmpeg core
-        statusElement.textContent = "Loading FFmpeg core (may take time)...";
-        console.log('Loading FFmpeg core & worker...');
-        await ffmpeg.load({
-          coreURL: corePath,
-          classWorkerURL: workerPath
-        });
-        console.log('FFmpeg core loaded successfully');
-        
-        statusElement.textContent = "Ready to extract frames. Please select videos.";
-        setupEventListeners();
-        
-      } catch (err) {
-        handleError(err);
-      }
-    }
-
-    // Setup event listeners for UI interaction
-    function setupEventListeners() {
-      // File drop area
-      dropArea.addEventListener('click', () => fileInput.click());
-      dropArea.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropArea.classList.add('border-blue-400', 'bg-blue-900/10');
+      // --- Attach event handlers ---
+      const progressBar = document.getElementById('progressBar');
+      ffmpeg.on('progress', ({ progress, time }) => {
+        // progress is 0-1, adjust for display
+        const percent = Math.round(progress * 100);
+        progressBar.value = percent;
+        if (!statusElement.textContent.includes("complete") && !statusElement.textContent.includes("Error")) {
+             // Check time exists and format it
+             const timeStr = time ? ` (Time: ${Math.round(time / 1000)}s)` : '';
+             statusElement.textContent = `Processing... ${percent}%${timeStr}`;
+        }
       });
-      dropArea.addEventListener('dragleave', () => {
-        dropArea.classList.remove('border-blue-400', 'bg-blue-900/10');
+      ffmpeg.on('log', ({ type, message }) => {
+        console.log(`[ffmpeg ${type}] ${message}`); // Log to console
       });
-      dropArea.addEventListener('drop', handleFileDrop);
-      fileInput.addEventListener('change', handleFileSelect);
-      
-      // Resolution options
-      customResRadio.addEventListener('change', toggleCustomResFields);
-      document.getElementById('fullRes').addEventListener('change', toggleCustomResFields);
-      document.getElementById('halfRes').addEventListener('change', toggleCustomResFields);
-      
-      // Folder selection
-      selectFolderBtn.addEventListener('click', selectOutputFolder);
-      
-      // Start extraction
-      startExtractionBtn.addEventListener('click', startExtraction);
-      
-      // Close completion message
-      closeCompletionBtn.addEventListener('click', () => {
-        completionMessage.classList.add('hidden');
-      });
-    }
-    
-    // Handle file drop event
-    async function handleFileDrop(e) {
-      e.preventDefault();
-      dropArea.classList.remove('border-blue-400', 'bg-blue-900/10');
-      
-      // Process dropped files
-      if (e.dataTransfer.items) {
-        const files = [];
-        for (let i = 0; i < e.dataTransfer.items.length; i++) {
-          const item = e.dataTransfer.items[i];
-          if (item.kind === 'file' && item.type.startsWith('video/')) {
-            const file = item.getAsFile();
-            files.push(file);
-          }
-        }
-        if (files.length > 0) {
-          processVideoFiles(files);
-        }
-      } else {
-        const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('video/'));
-        if (files.length > 0) {
-          processVideoFiles(files);
-        }
-      }
-    }
-    
-    // Handle file select via input
-    function handleFileSelect(e) {
-      const files = Array.from(e.target.files).filter(file => file.type.startsWith('video/'));
-      if (files.length > 0) {
-        processVideoFiles(files);
-      }
-    }
-    
-    // Process selected video files
-    async function processVideoFiles(files) {
-      statusElement.textContent = "Processing video files...";
-      videoFiles = files;
-      
-      // Display video files in the list
-      videoFilesElement.innerHTML = '';
-      videoFiles.forEach((file, index) => {
-        const listItem = document.createElement('li');
-        listItem.className = 'flex items-center justify-between';
-        listItem.innerHTML = `
-          <span class="truncate">${index + 1}. ${file.name}</span>
-          <span class="text-sm text-gray-400">${formatFileSize(file.size)}</span>
-        `;
-        videoFilesElement.appendChild(listItem);
-      });
-      
-      videoListSection.classList.remove('hidden');
-      
-      // Extract and display metadata if possible
-      try {
-        await extractVideoMetadata();
-      } catch (err) {
-        console.warn('Could not extract complete metadata:', err);
-      }
-      
-      // Show controls
-      controlsSection.classList.remove('hidden');
-      updateStartButtonState();
-      
-      statusElement.textContent = `${videoFiles.length} video file(s) ready for processing.`;
-    }
-    
-    // Extract metadata from the first video file
-    async function extractVideoMetadata() {
-      if (videoFiles.length === 0) return;
-      
-      const firstVideo = videoFiles[0];
-      statusElement.textContent = "Extracting video metadata...";
-      
-      try {
-        // Load the first file into ffmpeg to extract metadata
-        const videoData = new Uint8Array(await firstVideo.arrayBuffer());
-        await ffmpeg.writeFile('temp_video', videoData);
-        
-        // Use ffprobe to get metadata
-        await ffmpeg.exec(['-i', 'temp_video', '-hide_banner']);
-      } catch (err) {
-        // This will actually error with codec info in the error message
-        console.log('Expected ffprobe error with metadata:', err);
-        
-        // Try to parse metadata from stderr
-        const metadata = {
-          'Filename': firstVideo.name,
-          'File Size': formatFileSize(firstVideo.size),
-          'Last Modified': new Date(firstVideo.lastModified).toLocaleString()
-        };
-        
-        // Populate metadata section
-        metadataContent.innerHTML = '';
-        Object.entries(metadata).forEach(([key, value]) => {
-          const metadataItem = document.createElement('div');
-          metadataItem.innerHTML = `<strong>${key}:</strong> ${value}`;
-          metadataContent.appendChild(metadataItem);
-        });
-        
-        metadataSection.classList.remove('hidden');
-      }
-    }
-    
-    // Toggle custom resolution fields visibility
-    function toggleCustomResFields() {
-      customResFields.classList.toggle('hidden', !customResRadio.checked);
-    }
-    
-    // Select output folder using File System Access API
-    async function selectOutputFolder() {
-      try {
-        statusElement.textContent = "Selecting output folder...";
-        
-        // Request directory access
-        selectedFolderHandle = await window.showDirectoryPicker({
-          mode: 'readwrite'
-        });
-        
-        // Update UI
-        selectedFolderElement.textContent = selectedFolderHandle.name;
-        updateStartButtonState();
-        
-        // Check for existing JPG files
-        await checkForExistingJpgFiles();
-        
-        statusElement.textContent = `Output folder "${selectedFolderHandle.name}" selected.`;
-      } catch (err) {
-        console.error('Folder selection error:', err);
-        if (err.name !== 'AbortError') {
-          statusElement.textContent = "Error selecting folder. Please try again.";
-        } else {
-          statusElement.textContent = "Folder selection cancelled.";
-        }
-      }
-    }
-    
-    // Check for existing JPG files in the selected folder
-    async function checkForExistingJpgFiles() {
-      if (!selectedFolderHandle) return;
-      
-      try {
-        let hasJpgFiles = false;
-        let sampleFiles = [];
-        
-        for await (const entry of selectedFolderHandle.values()) {
-          if (entry.name.toLowerCase().endsWith('.jpg')) {
-            hasJpgFiles = true;
-            if (sampleFiles.length < 3) {
-              sampleFiles.push(entry.name);
-            }
-          }
-        }
-        
-        if (hasJpgFiles) {
-          // Prompt user about existing JPG files
-          const confirmDelete = confirm(
-            `The folder contains .jpg files such as ${sampleFiles.join(', ')}. ` +
-            `Delete them all before extraction?`
-          );
-          
-          if (confirmDelete) {
-            statusElement.textContent = "Deleting existing JPG files...";
-            await deleteExistingJpgFiles();
-            statusElement.textContent = "Existing JPG files deleted.";
-          }
-        }
-      } catch (err) {
-        console.error('Error checking for JPG files:', err);
-      }
-    }
-    
-    // Delete existing JPG files in the selected folder
-    async function deleteExistingJpgFiles() {
-      if (!selectedFolderHandle) return;
-      
-      try {
-        for await (const entry of selectedFolderHandle.values()) {
-          if (entry.name.toLowerCase().endsWith('.jpg')) {
-            const fileHandle = await selectedFolderHandle.getFileHandle(entry.name);
-            await fileHandle.remove();
-          }
-        }
-      } catch (err) {
-        console.error('Error deleting JPG files:', err);
-        throw err;
-      }
-    }
-    
-    // Update the start button state based on selections
-    function updateStartButtonState() {
-      startExtractionBtn.disabled = !(videoFiles.length > 0 && selectedFolderHandle);
-    }
-    
-    // Start the frame extraction process
-    async function startExtraction() {
-      if (videoFiles.length === 0 || !selectedFolderHandle) {
-        alert('Please select videos and an output folder first.');
-        return;
-      }
-      
-      try {
-        extractionInProgress = true;
-        progressSection.classList.remove('hidden');
-        startExtractionBtn.disabled = true;
-        errorLogElement.classList.add('hidden'); // Hide previous errors
-        
-        // Get extraction parameters
-        const interval = parseFloat(document.getElementById('interval').value) || 0.5;
-        const resolutionType = document.querySelector('input[name="resolution"]:checked').value;
-        
-        // Estimate total frames and warn if too many
-        const totalDuration = await estimateTotalDuration();
-        const estimatedFrames = Math.ceil(totalDuration / interval);
-        console.log(`Estimated total duration: ${totalDuration}s, frames: ${estimatedFrames}`);
-        
-        if (estimatedFrames > 10000) {
-          const confirmContinue = confirm(
-            `Warning: This will generate approximately ${estimatedFrames} frames. ` +
-            `This might take a long time and use a lot of storage. Continue?`
-          );
-          if (!confirmContinue) {
-            extractionInProgress = false;
-            progressSection.classList.add('hidden');
-            startExtractionBtn.disabled = false;
-            return;
-          }
-        }
-        
-        statusElement.textContent = "Starting frame extraction...";
-        
-        let totalFramesExtracted = 0;
-        const startTime = Date.now();
-        
-        // Process each video file
-        for (let i = 0; i < videoFiles.length; i++) {
-          const file = videoFiles[i];
-          const videoPrefix = `video_${String(i + 1).padStart(2, '0')}`;
-          
-          statusElement.textContent = `Processing video ${i + 1} of ${videoFiles.length}...`;
-          currentOperation.textContent = `Loading video: ${file.name}`;
-          
-          // Load video into ffmpeg
-          console.log(`Loading video ${i+1}/${videoFiles.length}: ${file.name}`);
-          const videoData = new Uint8Array(await file.arrayBuffer());
-          await ffmpeg.writeFile('input_video', videoData);
-          
-          // Get video duration using ffprobe
-          let videoDuration = 0;
-          try {
-            currentOperation.textContent = "Detecting video duration...";
-            await ffmpeg.exec(['-i', 'input_video', '-f', 'null', '-']);
-          } catch (err) {
-            // This will error but output duration info to stderr
-            console.log('Expected ffprobe error:', err);
-            // Try to extract duration from the error message
-            const durationMatch = err.message.match(/Duration: (\d{2}):(\d{2}):(\d{2})\.(\d{2})/);
-            if (durationMatch) {
-              const [_, hours, minutes, seconds, centiseconds] = durationMatch;
-              videoDuration = parseInt(hours) * 3600 + parseInt(minutes) * 60 + 
-                             parseInt(seconds) + parseInt(centiseconds) / 100;
-              console.log(`Detected video duration: ${videoDuration}s`);
-            }
-          }
-          
-          // Set resolution parameters
-          let scaleFilter = '';
-          if (resolutionType === 'half') {
-            scaleFilter = 'scale=iw/2:ih/2';
-          } else if (resolutionType === 'custom') {
-            const width = parseInt(document.getElementById('customWidth').value);
-            const height = parseInt(document.getElementById('customHeight').value);
-            if (width && height) {
-              scaleFilter = `scale=${width}:${height}`;
-            }
-          }
-          
-          // Build ffmpeg command
-          const ffmpegCommand = [
-            '-i', 'input_video',
-            '-y',
-            '-vf', `fps=1/${interval}${scaleFilter ? ',' + scaleFilter : ''}`,
-            '-q:v', '1', // High quality JPEG
-            '/frame_%05d.jpg'
-          ];
-          
-          // Log the command
-          console.log('Running FFmpeg command:', ffmpegCommand.join(' '));
-          currentOperation.textContent = "Extracting frames with FFmpeg...";
-          
-          // Execute ffmpeg command
-          await ffmpeg.exec(ffmpegCommand);
-          console.log('FFmpeg extraction complete');
-          
-          // List output files
-          currentOperation.textContent = "Getting extracted frames...";
-          const outputFiles = await ffmpeg.listDir('/');
-          const frameFiles = outputFiles.filter(file => file.startsWith('frame_') && file.endsWith('.jpg'));
-          console.log(`Found ${frameFiles.length} extracted frames`);
-          
-          if (frameFiles.length === 0) {
-            throw new Error("No frames were extracted. Check video format or interval settings.");
-          }
-          
-          // Prepare frame count for progress tracking
-          const totalFrames = frameFiles.length;
-          let framesProcessed = 0;
-          
-          // Write frames directly to the selected folder
-          currentOperation.textContent = `Writing ${frameFiles.length} frames to disk...`;
-          
-          for (const frameFile of frameFiles) {
-            try {
-              // Extract frame number from filename using a more robust regex
-              const frameNumberMatch = frameFile.match(/frame_(\d+)\.jpg/);
-              if (!frameNumberMatch) {
-                console.warn(`Could not parse frame number from ${frameFile}, skipping`);
-                continue;
-              }
-              
-              const frameNumber = parseInt(frameNumberMatch[1]);
-              
-              // Calculate the time in the video for this frame
-              const frameTime = (frameNumber - 1) * interval;
-              const timeString = formatTimeForFilename(frameTime);
-              
-              // New filename format: video_01__00-00-01.500.jpg
-              const newFilename = `${videoPrefix}__${timeString}.jpg`;
-              
-              // Read frame data from ffmpeg virtual filesystem
-              const frameData = await ffmpeg.readFile(frameFile);
-              
-              // Write directly to selected folder (no subdirectory)
-              try {
-                const frameFileHandle = await selectedFolderHandle.getFileHandle(newFilename, { create: true });
-                const writable = await frameFileHandle.createWritable();
-                await writable.write(frameData);
-                await writable.close();
-                
-                // Update progress
-                framesProcessed++;
-                const overallProgress = (i / videoFiles.length) + (framesProcessed / totalFrames / videoFiles.length);
-                const percent = Math.round(overallProgress * 100);
-                progressBar.style.width = `${percent}%`;
-                progressText.textContent = `${percent}%`;
-                
-                // Update current operation with frame count
-                currentOperation.textContent = `Writing frame ${framesProcessed}/${totalFrames} to disk...`;
-                
-                // Update time remaining with a more accurate calculation
-                const elapsedTime = (Date.now() - startTime) / 1000;
-                if (overallProgress > 0 && overallProgress < 1) {
-                  const estimatedTotalTime = elapsedTime / overallProgress;
-                  const remainingTime = estimatedTotalTime - elapsedTime;
-                  timeRemaining.textContent = `Estimated time remaining: ${formatTime(remainingTime)}`;
-                }
-              } catch (writeErr) {
-                console.error(`Error writing frame ${newFilename}:`, writeErr);
-                throw new Error(`Failed to write frame ${newFilename}: ${writeErr.message}`);
-              }
-              
-              // Delete temporary frame file to save memory
-              await ffmpeg.deleteFile(frameFile);
-            } catch (frameErr) {
-              console.error(`Error processing frame ${frameFile}:`, frameErr);
-              // Continue with other frames
-            }
-          }
-          
-          totalFramesExtracted += frameFiles.length;
-          
-          // Clear input video to save memory
-          await ffmpeg.deleteFile('input_video');
-          console.log(`Completed processing video ${i+1}/${videoFiles.length}`);
-        }
-        
-        // Calculate total time taken
-        const totalTime = (Date.now() - startTime) / 1000;
-        
-        // Update completion message
-        extractionStats.textContent = `Extracted ${totalFramesExtracted} frames from ${videoFiles.length} video(s) in ${formatTime(totalTime)}.`;
-        
-        // Show completion
-        statusElement.textContent = "Frame extraction complete!";
-        progressBar.style.width = '100%';
-        progressText.textContent = '100%';
-        timeRemaining.textContent = 'Completed';
-        currentOperation.textContent = 'All frames extracted successfully';
-        
-        // Show completion modal
-        completionMessage.classList.remove('hidden');
-        
-      } catch (err) {
-        handleError(err);
-      } finally {
-        extractionInProgress = false;
-        startExtractionBtn.disabled = false;
-      }
-    }
-    
-    // Estimate total duration of all videos
-    async function estimateTotalDuration() {
-      // Try to get more accurate duration
-      let totalDuration = 0;
-      
-      try {
-        for (let i = 0; i < videoFiles.length; i++) {
-          const file = videoFiles[i];
-          // For small videos, we can try to load them and get duration
-          if (file.size < 100 * 1024 * 1024) { // Less than 100MB
-            const videoData = new Uint8Array(await file.arrayBuffer());
-            await ffmpeg.writeFile('temp_duration_video', videoData);
-            
-            try {
-              await ffmpeg.exec(['-i', 'temp_duration_video', '-f', 'null', '-']);
-            } catch (err) {
-              // This will error but output duration info to stderr
-              const durationMatch = err.message.match(/Duration: (\d{2}):(\d{2}):(\d{2})\.(\d{2})/);
-              if (durationMatch) {
-                const [_, hours, minutes, seconds, centiseconds] = durationMatch;
-                const duration = parseInt(hours) * 3600 + parseInt(minutes) * 60 + 
-                                parseInt(seconds) + parseInt(centiseconds) / 100;
-                totalDuration += duration;
-              } else {
-                totalDuration += 60; // Default 1 minute if we can't determine
-              }
-            }
-            
-            await ffmpeg.deleteFile('temp_duration_video');
-          } else {
-            // For large files, just use default estimate
-            totalDuration += 60; // Assume 1 minute per video
-          }
-        }
-      } catch (err) {
-        console.warn('Error estimating duration:', err);
-        totalDuration = videoFiles.length * 60; // Fallback to default
-      }
-      
-      return totalDuration || (videoFiles.length * 60);
-    }
 
-    // Format time in seconds to HH:MM:SS format
-    function formatTime(seconds) {
-      const hrs = Math.floor(seconds / 3600);
-      const mins = Math.floor((seconds % 3600) / 60);
-      const secs = Math.floor(seconds % 60);
-      
-      return `${hrs > 0 ? hrs + 'h ' : ''}${mins > 0 ? mins + 'm ' : ''}${secs}s`;
-    }
-    
-    // Format time for filename (00-00-00.000)
-    function formatTimeForFilename(seconds) {
-      const hrs = Math.floor(seconds / 3600);
-      const mins = Math.floor((seconds % 3600) / 60);
-      const secs = Math.floor(seconds % 60);
-      const ms = Math.round((seconds % 1) * 1000);
-      
-      return `${String(hrs).padStart(2, '0')}-${String(mins).padStart(2, '0')}-${String(secs).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
-    }
-    
-    // Format file size in human-readable format
-    function formatFileSize(bytes) {
-      if (bytes < 1024) return bytes + ' B';
-      else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-      else if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
-      else return (bytes / 1073741824).toFixed(1) + ' GB';
-    }
-    
-    // Handle errors
-    function handleError(err) {
-      console.error('Error:', err);
-      const errorMsg = err.stack || err.toString();
+      // --- Load the core AND worker using LOCAL paths ---
+      statusElement.textContent = "Loading locally hosted ffmpeg core & worker (may take time)...";
+      console.log(`Loading FFmpeg core & worker via ffmpeg.load() using local URLs...`);
+      console.log(`  coreURL: ${corePath}`);
+      console.log(`  classWorkerURL: ${workerPath}`);
+      // Provide BOTH coreURL and classWorkerURL
+      await ffmpeg.load({ 
+        coreURL: corePath, 
+        classWorkerURL: workerPath 
+      });
+      console.log('FFmpeg core and worker loaded successfully via ffmpeg.load()');
+      console.log('>>> ffmpeg.load() promise resolved successfully! <<<');
+      statusElement.textContent = "FFmpeg core loaded.";
+
+      // --- Start FFmpeg processing ---
+      const videoEl = document.getElementById('outputVideo');
+
+      statusElement.textContent = "Fetching input video file...";
+      console.log('Fetching input video...');
+      // Use standard fetch for the video file.
+      const videoResponse = await fetch(
+        "https://raw.githubusercontent.com/ffmpegwasm/testdata/master/Big_Buck_Bunny_180_10s.webm"
+      );
+      if (!videoResponse.ok) {
+        throw new Error(`Failed to fetch video: ${videoResponse.status} ${videoResponse.statusText}`);
+      }
+      const videoData = new Uint8Array(await videoResponse.arrayBuffer());
+      console.log('Input video fetched successfully');
+
+      await ffmpeg.writeFile('input.webm', videoData);
+      console.log('Input video written to virtual filesystem');
+
+      statusElement.textContent = "Transcoding to MP4 (this may take a moment)...";
+      console.log('Starting transcoding...');
+      await ffmpeg.exec(['-i', 'input.webm', 'output.mp4']);
+      console.log('Transcoding completed');
+
+      const outputData = await ffmpeg.readFile('output.mp4');
+      console.log('Output file read');
+
+      const blob = new Blob([outputData.buffer], { type: 'video/mp4' });
+      const videoURL = URL.createObjectURL(blob);
+
+      videoEl.src = videoURL;
+      console.log('Video source set');
+
+      statusElement.textContent = "Transcoding complete! Click play to view.";
+      progressBar.value = 100;
+
+      console.log('Processing finished.');
+
+    } catch (err) {
+      console.error('Error during module import or FFmpeg operation:', err);
+      const errorMsg = `An error occurred: ${err.stack || err.toString()}`;
       errorLogElement.textContent += `\n[Error] ${errorMsg}\n---------------\n`;
-      errorLogElement.classList.remove('hidden');
-      statusElement.textContent = "An error occurred. Check error log.";
-      currentOperation.textContent = "Processing failed: " + err.message;
+      if (err.message && (err.message.includes("import") || err.message.includes("Failed to fetch dynamically imported module"))) {
+          statusElement.textContent = "Error importing local FFmpeg library. Check path/file existence (using index.js).";
+      } else if (statusElement.textContent.includes("Loading")) {
+          statusElement.textContent = "Error loading FFmpeg core/worker. Check local paths (core & worker paths should be relative to index.js).";
+      } else {
+          statusElement.textContent = "Error during processing. Check error log.";
+      }
     }
-    
-    // Register service worker for PWA
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(err => {
-          console.log('ServiceWorker registration failed:', err);
-        });
-      });
-    }
-    
-    // Initialize the app
-    init();
   </script>
 </body>
 </html>
