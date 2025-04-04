@@ -21,7 +21,7 @@
         <!-- User Input -->
         <div class="mb-4">
             <label for="videoInput" class="block text-sm font-medium text-gray-700 mb-1">Select Video File:</label>
-            <input type="file" id="videoInput" accept="video/*"
+            <input type="file" id="videoInput" accept="video/*" multiple
                    class="block w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 cursor-pointer focus:outline-none p-2" />
         </div>
 
@@ -349,7 +349,7 @@
             });
         }
 
-        async function processFrames(file) {
+        async function processFrames(file, fileIndex) {
             const fps = parseFloat(document.getElementById('fpsInput')?.value || '2');
             let duration = 0;
             try {
@@ -359,14 +359,14 @@
                 return;
             }
 
-            const inputFilename = "input." + file.name.split('.').pop();
+            const inputFilename = `input_${fileIndex}.` + file.name.split('.').pop();
             const data = new Uint8Array(await file.arrayBuffer());
             await ffmpeg.writeFile(inputFilename, data);
 
             let savedFiles = [];
             let currentTime = 0;
             while (currentTime < duration) {
-                const outputFilename = `frame_${currentTime.toFixed(2)}s.jpg`;
+                const outputFilename = `video_${fileIndex}__${currentTime.toFixed(2)}s.jpg`;
                 // Check if a file with the same name already exists (and skip if it does)
                 try {
                     await directoryHandle.getFileHandle(outputFilename, { create: false });
@@ -414,14 +414,12 @@
             updateStatus('Reading video file...');
             resetUI();
 
-            try {
-                await processFrames(videoInput.files[0]);
-            } catch (err) {
-                logError(`Failed during frame extraction for ${videoInput.files[0].name}`, err);
-                updateStatus('Error during extraction. See log.');
-            } finally {
-                enableExtractButton();
+            const files = Array.from(videoInput.files);
+            for (let i = 0; i < files.length; i++) {
+                await processFrames(files[i], i + 1);
             }
+
+            enableExtractButton();
         }
 
         // --- Event Listeners ---
