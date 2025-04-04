@@ -73,6 +73,12 @@
     const corePath = './ffmpeg-assets/ffmpeg-core.js';
 
     try {
+      // --- Set public path BEFORE importing --- 
+      // This helps ffmpeg.js find its own assets (like the worker)
+      const ffmpegDir = new URL(ffmpegPath, document.baseURI).href.replace(/\/[^\/]*$/, '/');
+      globalThis.__webpack_public_path__ = ffmpegDir; 
+      console.log(`Setting __webpack_public_path__ to: ${globalThis.__webpack_public_path__}`);
+
       // --- Import necessary items from the LOCAL main library build ---
       // Note: fetchFile might not be exported this way, may need adjustment
       const { FFmpeg } = await import(ffmpegPath); // Removed fetchFile import
