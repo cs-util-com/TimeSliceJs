@@ -1,173 +1,211 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>ffmpeg.wasm Demo – WebM to MP4 (ESM - Self-Hosted)</title>
-  <!-- Scripts are loaded via local ES Module import -->
-  <style>
-    body {
-      font-family: sans-serif;
-      max-width: 800px;
-      margin: 20px auto;
-      padding: 0 20px;
-    }
-    #status {
-      margin: 20px 0;
-      font-weight: bold;
-    }
-    #progressBar {
-      width: 100%;
-      max-width: 400px;
-      margin: 10px 0;
-    }
-    #outputVideo {
-      max-width: 100%;
-      margin: 20px 0;
-    }
-    #errorLog {
-      color: red;
-      white-space: pre-wrap;
-      background: #f8f8f8;
-      padding: 10px;
-      border-radius: 4px;
-      display: block; /* Make sure errors are visible by default */
-      border: 1px solid #ddd;
-      margin-top: 10px;
-    }
-  </style>
-</head>
-<body>
-  <h1>WebM to MP4 Transcoder (ESM Load - Self-Hosted Assets)</h1>
-  <div id="status">Initializing...</div>
-  <progress id="progressBar" value="0" max="100"></progress>
-  <video id="outputVideo" controls></video>
-  <pre id="errorLog">Error Log:
----------------
-</pre>
-
-  <!-- REMOVED the UMD script tag and the __webpack_public_path__ script -->
-
-  <!-- Main script reverted to type="module" -->
-  <script type="module">
-    // REMOVED async IIFE wrapper as it's not needed for type=module
-    const errorLogElement = document.getElementById('errorLog');
-    const statusElement = document.getElementById('status');
-
-    // Global error handler
-    window.onerror = function(message, source, lineno, colno, error) {
-      console.error("[Global Error Handler]", message, source, lineno, colno, error);
-      errorLogElement.textContent += `\n[Global Error] ${message}\n  Source: ${source}\n  Line: ${lineno}, Col: ${colno}\n  Error Obj: ${error ? error.stack || error : 'N/A'}\n---------------\n`;
-      if (!statusElement.textContent.startsWith("Error")) {
-          statusElement.textContent = "A critical error occurred. Check error log.";
-      }
-      return false;
-    };
-
-    console.log('Module script executing...');
-    statusElement.textContent = "Importing FFmpeg library (Local ESM)...";
-
-    // --- Define LOCAL paths for ESM build ---
-    // IMPORTANT: Ensure you have the ESM versions of:
-    // - ffmpeg.js        (from @ffmpeg/ffmpeg/dist/esm/)
-    // - worker.js        (from @ffmpeg/ffmpeg/dist/esm/) <-- Needed for classWorkerURL
-    // - ffmpeg-core.js   (from @ffmpeg/core/dist/esm/)
-    // - ffmpeg-core.wasm (from @ffmpeg/core/dist/esm/)
-    // in the './ffmpeg-assets/' directory relative to index.html
-    const ffmpegPath = './ffmpeg-assets/index.js';
-    const corePath = './ffmpeg-core.js';
-    const workerPath = './worker.js';
-
-    try {
-      // --- Import necessary items from the LOCAL ESM library build ---
-      console.log(`Attempting to import FFmpeg library from: ${ffmpegPath}`);
-      const { FFmpeg } = await import(ffmpegPath);
-      console.log('FFmpeg ESM module imported successfully.');
-      statusElement.textContent = "FFmpeg library imported. Initializing...";
-
-      // --- Instantiate the FFmpeg class ---
-      // Removed corePath from here, will be specified in load()
-      const ffmpeg = new FFmpeg();
-      console.log('FFmpeg instance created.');
-
-      // --- Attach event handlers ---
-      const progressBar = document.getElementById('progressBar');
-      ffmpeg.on('progress', ({ progress, time }) => {
-        // progress is 0-1, adjust for display
-        const percent = Math.round(progress * 100);
-        progressBar.value = percent;
-        if (!statusElement.textContent.includes("complete") && !statusElement.textContent.includes("Error")) {
-             // Check time exists and format it
-             const timeStr = time ? ` (Time: ${Math.round(time / 1000)}s)` : '';
-             statusElement.textContent = `Processing... ${percent}%${timeStr}`;
+    <meta charset="UTF-8" />
+    <title>ffmpeg.wasm - Extract Frames</title>
+    <!-- Include Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Optional: Add custom base styles or component styles if needed */
+        /* For example, ensure pre tag wraps correctly */
+        pre {
+             white-space: pre-wrap; /* Ensures long error messages wrap */
+             word-wrap: break-word; /* Breaks long words */
         }
-      });
-      ffmpeg.on('log', ({ type, message }) => {
-        console.log(`[ffmpeg ${type}] ${message}`); // Log to console
-      });
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-6 max-w-2xl bg-white shadow-md rounded-lg mt-10">
+        <h1 class="text-2xl font-bold mb-4 text-center text-blue-700">Extract 2 Frames from Video</h1>
 
-      // --- Load the core AND worker using LOCAL paths ---
-      statusElement.textContent = "Loading locally hosted ffmpeg core & worker (may take time)...";
-      console.log(`Loading FFmpeg core & worker via ffmpeg.load() using local URLs...`);
-      console.log(`  coreURL: ${corePath}`);
-      console.log(`  classWorkerURL: ${workerPath}`);
-      // Provide BOTH coreURL and classWorkerURL
-      await ffmpeg.load({ 
-        coreURL: corePath, 
-        classWorkerURL: workerPath 
-      });
-      console.log('FFmpeg core and worker loaded successfully via ffmpeg.load()');
-      console.log('>>> ffmpeg.load() promise resolved successfully! <<<');
-      statusElement.textContent = "FFmpeg core loaded.";
+        <!-- User Input -->
+        <div class="mb-4">
+            <label for="videoInput" class="block text-sm font-medium text-gray-700 mb-1">Select Video File:</label>
+            <input type="file" id="videoInput" accept="video/*"
+                   class="block w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 cursor-pointer focus:outline-none p-2" />
+        </div>
 
-      // --- Start FFmpeg processing ---
-      const videoEl = document.getElementById('outputVideo');
+        <!-- Action Button -->
+        <button id="extractButton" disabled
+                class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50 disabled:cursor-not-allowed">
+            Load FFmpeg & Select File First
+        </button>
 
-      statusElement.textContent = "Fetching input video file...";
-      console.log('Fetching input video...');
-      // Use standard fetch for the video file.
-      const videoResponse = await fetch(
-        "https://raw.githubusercontent.com/ffmpegwasm/testdata/master/Big_Buck_Bunny_180_10s.webm"
-      );
-      if (!videoResponse.ok) {
-        throw new Error(`Failed to fetch video: ${videoResponse.status} ${videoResponse.statusText}`);
-      }
-      const videoData = new Uint8Array(await videoResponse.arrayBuffer());
-      console.log('Input video fetched successfully');
+        <!-- Status Display -->
+        <div id="status" class="mt-4 text-center text-gray-600 font-medium">Initializing...</div>
 
-      await ffmpeg.writeFile('input.webm', videoData);
-      console.log('Input video written to virtual filesystem');
+        <!-- Output Links Container -->
+        <div id="outputLinks" class="mt-4 space-y-2">
+            <!-- Download links will appear here -->
+        </div>
 
-      statusElement.textContent = "Transcoding to MP4 (this may take a moment)...";
-      console.log('Starting transcoding...');
-      await ffmpeg.exec(['-i', 'input.webm', 'output.mp4']);
-      console.log('Transcoding completed');
+        <!-- Error Log -->
+        <div class="mt-6" id="errorContainer" hidden>
+             <h3 class="text-lg font-semibold text-red-700 mb-2">Error Log:</h3>
+             <pre id="errorLog" class="bg-red-50 p-3 border border-red-300 rounded-md text-red-800 text-sm"></pre>
+        </div>
 
-      const outputData = await ffmpeg.readFile('output.mp4');
-      console.log('Output file read');
+    </div>
 
-      const blob = new Blob([outputData.buffer], { type: 'video/mp4' });
-      const videoURL = URL.createObjectURL(blob);
+    <!-- JavaScript -->
+    <script type="module">
+        // --- DOM Elements ---
+        const videoInput = document.getElementById('videoInput');
+        const extractButton = document.getElementById('extractButton');
+        const statusElement = document.getElementById('status');
+        const outputLinksContainer = document.getElementById('outputLinks');
+        const errorContainer = document.getElementById('errorContainer');
+        const errorLogElement = document.getElementById('errorLog');
 
-      videoEl.src = videoURL;
-      console.log('Video source set');
+        // --- FFmpeg Setup ---
+        // IMPORTANT: Adjust these paths if your assets are located elsewhere
+        const ffmpegPath = './ffmpeg-assets/index.js'; // Expects ESM build's index.js
+        const corePath = './ffmpeg-core.js';       // Relative path to ffmpeg-core.js (ESM)
+        const workerPath = './worker.js';         // Relative path to worker.js (ESM)
 
-      statusElement.textContent = "Transcoding complete! Click play to view.";
-      progressBar.value = 100;
+        let ffmpeg = null; // To hold the FFmpeg instance
 
-      console.log('Processing finished.');
+        // --- Helper Function for Logging Errors ---
+        function logError(message, error = null) {
+            console.error(message, error);
+            errorContainer.hidden = false;
+            let errorText = `[Error] ${message}`;
+            if (error) {
+                errorText += `\nDetails: ${error.stack || error.toString()}`;
+            }
+            errorLogElement.textContent += errorText + '\n---------------\n';
+            statusElement.textContent = `Error occurred. Check log below.`;
+            extractButton.disabled = false; // Re-enable button on error
+            extractButton.textContent = 'Extract Frames';
+        }
 
-    } catch (err) {
-      console.error('Error during module import or FFmpeg operation:', err);
-      const errorMsg = `An error occurred: ${err.stack || err.toString()}`;
-      errorLogElement.textContent += `\n[Error] ${errorMsg}\n---------------\n`;
-      if (err.message && (err.message.includes("import") || err.message.includes("Failed to fetch dynamically imported module"))) {
-          statusElement.textContent = "Error importing local FFmpeg library. Check path/file existence (using index.js).";
-      } else if (statusElement.textContent.includes("Loading")) {
-          statusElement.textContent = "Error loading FFmpeg core/worker. Check local paths (core & worker paths should be relative to index.js).";
-      } else {
-          statusElement.textContent = "Error during processing. Check error log.";
-      }
-    }
-  </script>
+        // --- Initialize FFmpeg ---
+        async function initializeFFmpeg() {
+            try {
+                statusElement.textContent = "Loading FFmpeg library...";
+                console.log("Importing FFmpeg library from:", ffmpegPath);
+                const { FFmpeg } = await import(ffmpegPath);
+                console.log("FFmpeg library imported.");
+
+                ffmpeg = new FFmpeg();
+
+                // Optional: Listen for logs from FFmpeg
+                ffmpeg.on('log', ({ type, message }) => {
+                    console.log(`[ffmpeg ${type}] ${message}`);
+                });
+
+                statusElement.textContent = "Loading FFmpeg core (this may take a moment)...";
+                console.log("Loading core/worker with paths:", { coreURL: corePath, classWorkerURL: workerPath });
+                await ffmpeg.load({
+                    coreURL: corePath,
+                    classWorkerURL: workerPath
+                });
+                console.log("FFmpeg core loaded successfully.");
+
+                statusElement.textContent = "FFmpeg ready. Select a video file.";
+                extractButton.textContent = 'Extract Frames';
+                extractButton.disabled = false; // Enable button only after loading
+
+            } catch (err) {
+                 logError("Failed to initialize FFmpeg. Check console and asset paths.", err);
+                 statusElement.textContent = "Error loading FFmpeg. Check console & paths.";
+                 extractButton.textContent = 'FFmpeg Load Failed';
+                 extractButton.disabled = true;
+            }
+        }
+
+        // --- Frame Extraction Logic ---
+        async function extractFrames() {
+            if (!ffmpeg || !ffmpeg.loaded) {
+                logError("FFmpeg is not loaded yet.");
+                return;
+            }
+            if (videoInput.files.length === 0) {
+                statusElement.textContent = "Please select a video file first.";
+                return;
+            }
+
+            const file = videoInput.files[0];
+            const inputFilename = "input." + file.name.split('.').pop(); // e.g., input.mp4
+            const outputFilename1 = 'frame_01s.jpg'; // Frame at 1 second
+            const outputFilename2 = 'frame_05s.jpg'; // Frame at 5 seconds
+
+            // --- UI Updates ---
+            extractButton.disabled = true;
+            extractButton.textContent = 'Processing...';
+            statusElement.textContent = 'Reading video file...';
+            outputLinksContainer.innerHTML = ''; // Clear previous links
+            errorLogElement.textContent = '';   // Clear previous errors
+            errorContainer.hidden = true;      // Hide error container
+
+            try {
+                // 1. Read file into Uint8Array
+                const data = new Uint8Array(await file.arrayBuffer());
+                statusElement.textContent = `Writing ${inputFilename} to virtual filesystem...`;
+                console.log(`Writing ${file.name} as ${inputFilename}`);
+                await ffmpeg.writeFile(inputFilename, data);
+
+                // 2. Extract Frame 1 (at 1 second)
+                statusElement.textContent = 'Extracting frame at 1 second...';
+                console.log(`Executing: -i ${inputFilename} -ss 00:00:01 -vframes 1 ${outputFilename1}`);
+                await ffmpeg.exec(['-i', inputFilename, '-ss', '00:00:01', '-vframes', '1', outputFilename1]);
+                console.log(`${outputFilename1} extracted.`);
+
+                // 3. Extract Frame 2 (at 5 seconds) - Make sure video is long enough!
+                statusElement.textContent = 'Extracting frame at 5 seconds...';
+                console.log(`Executing: -i ${inputFilename} -ss 00:00:05 -vframes 1 ${outputFilename2}`);
+                await ffmpeg.exec(['-i', inputFilename, '-ss', '00:00:05', '-vframes', '1', outputFilename2]);
+                console.log(`${outputFilename2} extracted.`);
+
+                // 4. Read extracted frames
+                statusElement.textContent = 'Reading extracted frames...';
+                const frameData1 = await ffmpeg.readFile(outputFilename1);
+                const frameData2 = await ffmpeg.readFile(outputFilename2);
+
+                // 5. Create download links
+                createDownloadLink(frameData1, outputFilename1);
+                createDownloadLink(frameData2, outputFilename2);
+
+                statusElement.textContent = 'Extraction complete! Click links below to download frames.';
+                console.log("Processing finished successfully.");
+
+                // Optional: Clean up virtual files
+                 await ffmpeg.deleteFile(inputFilename);
+                 await ffmpeg.deleteFile(outputFilename1);
+                 await ffmpeg.deleteFile(outputFilename2);
+
+
+            } catch (err) {
+                logError(`Failed during frame extraction for ${file.name}`, err);
+                statusElement.textContent = 'Error during extraction. See log.';
+            } finally {
+                // Re-enable button regardless of success or failure
+                extractButton.disabled = false;
+                extractButton.textContent = 'Extract Frames';
+            }
+        }
+
+        // --- Helper to Create Download Links ---
+        function createDownloadLink(data, filename) {
+            const blob = new Blob([data.buffer], { type: 'image/jpeg' }); // Assuming JPG output
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.textContent = `Download ${filename}`;
+            a.className = 'block w-full text-center bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded cursor-pointer';
+            outputLinksContainer.appendChild(a);
+
+             // Optional: Revoke object URL after a delay to allow download start
+            // setTimeout(() => URL.revokeObjectURL(url), 60000); // Revoke after 1 minute
+        }
+
+        // --- Event Listeners ---
+        extractButton.addEventListener('click', extractFrames);
+
+        // --- Start Initialization ---
+        initializeFFmpeg();
+
+    </script>
 </body>
 </html>
