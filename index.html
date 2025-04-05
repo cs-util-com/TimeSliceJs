@@ -205,6 +205,10 @@
             errorLogElement.textContent += errorText + '\n---------------\n';
             updateStatus(`Error occurred. Check log below.`);
             enableExtractButton();
+            if (error && error.name === 'NotReadableError') {
+                console.error('File could not be read. Possible causes: locked file, insufficient permissions, or concurrency issues.');
+                console.error('Try ensuring the file is not open elsewhere and that you have correct file permissions.');
+            }
         }
 
         function enableExtractButton(enabled = true) {
