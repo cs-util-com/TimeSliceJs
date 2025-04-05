@@ -111,6 +111,53 @@
         const customWidthInput = document.getElementById('customWidthInput');
         const customHeightInput = document.getElementById('customHeightInput');
 
+        // --- Preferences Storage ---
+        function saveUserPreferences() {
+            // Save FPS setting
+            const fps = document.getElementById('fpsInput').value;
+            localStorage.setItem('timeSlice_fps', fps);
+            
+            // Save resolution settings
+            const resolutionMode = resolutionSelect.value;
+            localStorage.setItem('timeSlice_resolutionMode', resolutionMode);
+            
+            // Save custom resolution values if applicable
+            if (resolutionMode === 'custom') {
+                localStorage.setItem('timeSlice_customWidth', customWidthInput.value);
+                localStorage.setItem('timeSlice_customHeight', customHeightInput.value);
+            }
+            
+            console.log('User preferences saved');
+        }
+        
+        function loadUserPreferences() {
+            // Load FPS setting
+            const savedFps = localStorage.getItem('timeSlice_fps');
+            if (savedFps) {
+                document.getElementById('fpsInput').value = savedFps;
+            }
+            
+            // Load resolution setting
+            const savedResolutionMode = localStorage.getItem('timeSlice_resolutionMode');
+            if (savedResolutionMode) {
+                resolutionSelect.value = savedResolutionMode;
+                
+                // Show/hide custom resolution container based on saved setting
+                customResContainer.classList.toggle('hidden', savedResolutionMode !== 'custom');
+                
+                // Apply custom resolution values if applicable
+                if (savedResolutionMode === 'custom') {
+                    const savedWidth = localStorage.getItem('timeSlice_customWidth');
+                    const savedHeight = localStorage.getItem('timeSlice_customHeight');
+                    
+                    if (savedWidth) customWidthInput.value = savedWidth;
+                    if (savedHeight) customHeightInput.value = savedHeight;
+                }
+            }
+            
+            console.log('User preferences loaded');
+        }
+
         // --- FFmpeg Setup ---
         const ffmpegPath = './ffmpeg-assets/index.js'; // Expects ESM build's index.js
         const corePath = './ffmpeg-core.js';       // Relative path to ffmpeg-core.js (ESM)
@@ -491,10 +538,17 @@
         videoInput.addEventListener('change', updateButtonState);
         resolutionSelect.addEventListener('change', () => {
             customResContainer.classList.toggle('hidden', resolutionSelect.value !== 'custom');
+            saveUserPreferences();
         });
+        
+        // Add listeners to save preferences when values change
+        document.getElementById('fpsInput').addEventListener('change', saveUserPreferences);
+        customWidthInput.addEventListener('change', saveUserPreferences);
+        customHeightInput.addEventListener('change', saveUserPreferences);
 
         // --- Start Initialization ---
         initializeFFmpeg();
+        loadUserPreferences(); // Load saved preferences
 
     </script>
 </body>
