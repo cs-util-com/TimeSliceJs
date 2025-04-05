@@ -58,14 +58,6 @@ A minimalist, high-performance **Progressive Web App (PWA)** for extracting JPEG
    `video_01__00-00-01.500.jpg`  
    where `video_01` corresponds to first dropped file, etc.
 
-* If the folder already contains `.jpg` files:
-
-  * App scans for existing files
-
-  * Prompts user: “The folder contains files such as X, Y, Z. Delete them all before extraction?”
-
-  * Deletes only if user confirms
-
 ### **4\. Processing Feedback**
 
 * Display video metadata on drop:
