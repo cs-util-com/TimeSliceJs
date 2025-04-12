@@ -480,17 +480,20 @@
             // Quality 100 => 2, Quality 1 => 31
             const quality = Math.round(31 - ((jpegQualityInput.value / 100) * 29)) || 2;
             
-            const ffmpegArgs = ['-hide_banner', '-loglevel', 'debug', '-ss', formattedTime, '-i', inputFilename]; // Changed loglevel to debug
+            const ffmpegArgs = ['-hide_banner', '-loglevel', 'debug', '-ss', formattedTime, '-i', inputFilename]; 
             if (scaleFilter) {
                 ffmpegArgs.push('-vf', scaleFilter);
             }
             
             // Add quality parameter
             ffmpegArgs.push('-q:v', quality.toString());
+
+            // Explicitly set pixel format for output JPEG
+            ffmpegArgs.push('-pix_fmt', 'yuvj420p'); 
             
             ffmpegArgs.push('-vframes', '1', outputFilename);
 
-            logConsole(`Executing FFmpeg command: ffmpeg ${ffmpegArgs.join(' ')}`); // Log the command
+            logConsole(`Executing FFmpeg command: ffmpeg ${ffmpegArgs.join(' ')}`); 
 
             await ffmpeg.exec(ffmpegArgs);
         }
@@ -598,7 +601,7 @@
                 try {
                     await directoryHandle.getFileHandle(outputFilename, { create: false });
                     logConsole(`Skipping existing frame: ${outputFilename}`);
-                } catch {
+                } catch { // If getFileHandle fails, the file doesn't exist, so proceed
                     try {
                         await extractFrame(inputFilename, currentTime, outputFilename);
                         const frameData = await ffmpeg.readFile(outputFilename);
@@ -612,19 +615,41 @@
                         }
                         await ffmpeg.deleteFile(outputFilename);
                     } catch (err) {
-                        logError(`Extraction stopped at ${currentTime.toFixed(2)}s`, err);
-                        break;
+                        // Check for the specific buffer error
+                        if (err && err.message && err.message.includes('put_bits buffer too small')) {
+                            logError(`Extraction failed at ${currentTime.toFixed(2)}s due to buffer size. Try reducing resolution or JPEG quality.`, err);
+                        } else {
+                            logError(`Extraction stopped at ${currentTime.toFixed(2)}s`, err);
+                        }
+                        break; // Stop processing this video on error
                     }
                 }
                 currentTime += 1 / fps;
             }
+            // Ensure input file is deleted even if the loop breaks early
+            try {
+                 await ffmpeg.deleteFile(inputFilename);
+                 logConsole(`Deleted ${inputFilename} from FFmpeg FS.`);
+            } catch (deleteError) {
+                 logError(`Failed to delete ${inputFilename} from FFmpeg FS.`, deleteError);
+            }
 
-            await ffmpeg.deleteFile(inputFilename);
+
             if (savedFiles.length > 0) {
                 displaySavedFilesInfo(savedFiles);
-                updateStatus('Extraction complete! Frames saved to the selected folder.');
+                // Update status based on whether the loop completed or broke early
+                if (currentTime >= duration) {
+                    updateStatus('Extraction complete! Frames saved to the selected folder.');
+                } else {
+                    updateStatus('Extraction partially complete due to error. Some frames saved.');
+                }
             } else {
-                updateStatus('No frames were successfully saved.');
+                 // Update status based on whether the loop completed or broke early
+                if (currentTime >= duration) {
+                    updateStatus('Extraction complete, but no frames met the sharpness threshold or were saved.');
+                } else {
+                    updateStatus('Extraction failed. No frames were saved.');
+                }
             }
         }
 
