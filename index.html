@@ -485,7 +485,8 @@
             const quality = Math.round(31 - ((jpegQualityInput.value / 100) * 29)) || 2;
             
             // Apply the scale filter using -vf
-            const ffmpegArgs = ['-hide_banner', '-loglevel', 'debug', '-ss', formattedTime, '-i', inputFilename, '-vf', scaleFilter]; 
+            // Change loglevel from 'debug' to 'info'
+            const ffmpegArgs = ['-hide_banner', '-loglevel', 'info', '-ss', formattedTime, '-i', inputFilename, '-vf', scaleFilter]; 
             
             // Add quality parameter
             ffmpegArgs.push('-q:v', quality.toString());
@@ -525,14 +526,24 @@
         };
         // Measure sharpness (Laplacian variance)
         async function measureSharpness(buffer) {
-            if (!isCvReady) return 0; 
+            if (!isCvReady) {
+                logConsole('OpenCV not ready, returning sharpness 0.'); // Log if OpenCV isn't ready
+                return 0; 
+            }
+            logConsole('Measuring sharpness with OpenCV...'); // Log entry into the function
             return new Promise((resolve) => {
                 const blobURL = URL.createObjectURL(new Blob([buffer], { type: 'image/jpeg' }));
                 const img = new Image();
                 img.onload = () => {
                     let srcMat, grayMat, laplacianMat, meanMat, stdDevMat;
                     try {
+                        logConsole('OpenCV Image loaded, processing...');
                         srcMat = cv.imread(img);
+                        if (!srcMat || srcMat.empty()) {
+                             logError('cv.imread failed or returned empty Mat.');
+                             resolve(0);
+                             return; // Exit early
+                        }
                         grayMat = new cv.Mat();
                         cv.cvtColor(srcMat, grayMat, cv.COLOR_RGBA2GRAY);
                         laplacianMat = new cv.Mat();
@@ -541,19 +552,24 @@
                         stdDevMat = new cv.Mat();
                         cv.meanStdDev(laplacianMat, meanMat, stdDevMat);
                         const sharpness = stdDevMat.data64F[0] * stdDevMat.data64F[0];
+                        logConsole(`OpenCV sharpness calculation successful: ${sharpness}`);
                         resolve(sharpness);
-                    } catch {
-                        resolve(0);
+                    } catch (cvError) { // Catch specific OpenCV errors
+                        logError('Error during OpenCV sharpness calculation:', cvError); // Log the actual error
+                        resolve(0); // Resolve with 0 on error
                     } finally {
-                        if (srcMat) srcMat.delete();
-                        if (grayMat) grayMat.delete();
-                        if (laplacianMat) laplacianMat.delete();
-                        if (meanMat) meanMat.delete();
-                        if (stdDevMat) stdDevMat.delete();
+                        // Ensure cleanup happens
+                        if (srcMat && !srcMat.isDeleted()) srcMat.delete();
+                        if (grayMat && !grayMat.isDeleted()) grayMat.delete();
+                        if (laplacianMat && !laplacianMat.isDeleted()) laplacianMat.delete();
+                        if (meanMat && !meanMat.isDeleted()) meanMat.delete();
+                        if (stdDevMat && !stdDevMat.isDeleted()) stdDevMat.delete();
                         URL.revokeObjectURL(blobURL);
+                        logConsole('OpenCV resources cleaned up.');
                     }
                 };
-                img.onerror = () => {
+                img.onerror = (err) => { // Log image loading errors
+                    logError('Failed to load image blob for sharpness calculation.', err);
                     URL.revokeObjectURL(blobURL);
                     resolve(0);
                 };
