@@ -636,7 +636,19 @@
         // --- Event Listeners ---
         extractButton.addEventListener('click', extractFrames);
         folderSelectButton.addEventListener('click', selectFolder);
-        videoInput.addEventListener('change', updateButtonState);
+        videoInput.addEventListener('change', async (e) => {
+            updateButtonState();
+            // Immediately try reading each selected file
+            for (const file of e.target.files) {
+                try {
+                    await file.arrayBuffer();
+                    // Add in the log that access to the file works:
+                    console.log(`File "${file.name}" is accessible.`);
+                } catch (err) {
+                    logError(`Unable to read file "${file.name}" right after selection.`, err);
+                }
+            }
+        });
         resolutionSelect.addEventListener('change', () => {
             customResContainer.classList.toggle('hidden', resolutionSelect.value !== 'custom');
             saveUserPreferences();
