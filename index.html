@@ -485,7 +485,6 @@
             const quality = Math.round(31 - ((jpegQualityInput.value / 100) * 29)) || 2;
             
             // Apply the scale filter using -vf
-            // Change loglevel from 'debug' to 'info'
             const ffmpegArgs = ['-hide_banner', '-loglevel', 'info', '-ss', formattedTime, '-i', inputFilename, '-vf', scaleFilter]; 
             
             // Add quality parameter
@@ -498,7 +497,14 @@
 
             logConsole(`Executing FFmpeg command: ffmpeg ${ffmpegArgs.join(' ')}`); 
 
-            await ffmpeg.exec(ffmpegArgs);
+            try {
+                logConsole(`About to execute ffmpeg.exec for ${outputFilename}...`);
+                await ffmpeg.exec(ffmpegArgs);
+                logConsole(`ffmpeg.exec finished successfully for ${outputFilename}.`); // Log success
+            } catch (execError) {
+                logError(`Error during ffmpeg.exec for ${outputFilename}:`, execError); // Log specific exec error
+                throw execError; // Re-throw the error so the outer catch block can handle it
+            }
         }
 
         async function getVideoDuration(file) {
@@ -621,23 +627,35 @@
                     logConsole(`Skipping existing frame: ${outputFilename}`);
                 } catch { // If getFileHandle fails, the file doesn't exist, so proceed
                     try {
+                        logConsole(`Attempting to extract frame: ${outputFilename}`); // Add log before extraction attempt
                         await extractFrame(inputFilename, currentTime, outputFilename);
+                        logConsole(`Attempting to read frame data: ${outputFilename}`); // Add log before reading file
                         const frameData = await ffmpeg.readFile(outputFilename);
+                        logConsole(`Frame data read, attempting sharpness check: ${outputFilename}`); // Add log before sharpness check
                         const sharpness = await measureSharpness(frameData);
                         logConsole(`Frame at ${currentTime.toFixed(2)}s has sharpness ${sharpness.toFixed(2)}`);
                         if (sharpness >= userThreshold) {
+                            logConsole(`Sharpness above threshold, attempting save: ${outputFilename}`); // Add log before save
                             const success = await saveFrameToFolder(frameData, outputFilename);
-                            if (success) savedFiles.push(outputFilename);
+                            if (success) {
+                                savedFiles.push(outputFilename);
+                                logConsole(`Successfully saved: ${outputFilename}`); // Add log after successful save
+                            } else {
+                                logConsole(`Save failed for: ${outputFilename}`); // Add log if save fails
+                            }
                         } else {
                             logConsole(`Frame skipped due to low sharpness: ${sharpness.toFixed(2)}`);
                         }
+                        logConsole(`Attempting to delete frame from FS: ${outputFilename}`); // Add log before delete
                         await ffmpeg.deleteFile(outputFilename);
+                        logConsole(`Deleted frame from FS: ${outputFilename}`); // Add log after delete
                     } catch (err) {
-                        // Check for the specific buffer error
-                        if (err && err.message && (err.message.includes('put_bits buffer too small') || err.message.includes('FS error'))) { // Added FS error check here too
+                        // Check for the specific buffer error or FS errors
+                        if (err && err.message && (err.message.includes('put_bits buffer too small') || err.message.includes('FS error'))) { 
                             logError(`Extraction failed at ${currentTime.toFixed(2)}s due to internal FFmpeg error (possibly buffer size). Try reducing Output Resolution or JPEG Quality.`, err);
                         } else {
-                            logError(`Extraction stopped at ${currentTime.toFixed(2)}s`, err);
+                            // Log any other error during the extraction/processing steps
+                            logError(`Processing stopped at ${currentTime.toFixed(2)}s for ${outputFilename}`, err); 
                         }
                         break; // Stop processing this video on error
                     }
