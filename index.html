@@ -464,26 +464,28 @@
                 case 'half':
                     return 'scale=iw/2:ih/2';
                 case 'custom':
-                    return `scale=${customWidthInput.value || 640}:${customHeightInput.value || 360}`;
-                default:
-                    return null;
+                    // Ensure valid numbers, default if not
+                    const w = parseInt(customWidthInput.value) || 640;
+                    const h = parseInt(customHeightInput.value) || 360;
+                    return `scale=${w}:${h}`;
+                default: // 'full' or any other case
+                    // Explicitly pass through scaler, might help normalize pixel format/range
+                    return 'scale=iw:ih'; 
             }
         }
 
         async function extractFrame(inputFilename, timestamp, outputFilename) {
             updateStatus(`Extracting frame at ${timestamp} seconds...`);
             const formattedTime = formatTimestamp(timestamp);
-            const scaleFilter = getScaleFilter();
+            const scaleFilter = getScaleFilter(); // Will always return a filter now
             
             // Convert quality from 1-100 scale to FFmpeg's scale (2-31, inverted)
             // Higher values in FFmpeg mean lower quality, so we invert the scale
             // Quality 100 => 2, Quality 1 => 31
             const quality = Math.round(31 - ((jpegQualityInput.value / 100) * 29)) || 2;
             
-            const ffmpegArgs = ['-hide_banner', '-loglevel', 'debug', '-ss', formattedTime, '-i', inputFilename]; 
-            if (scaleFilter) {
-                ffmpegArgs.push('-vf', scaleFilter);
-            }
+            // Apply the scale filter using -vf
+            const ffmpegArgs = ['-hide_banner', '-loglevel', 'debug', '-ss', formattedTime, '-i', inputFilename, '-vf', scaleFilter]; 
             
             // Add quality parameter
             ffmpegArgs.push('-q:v', quality.toString());
@@ -616,8 +618,8 @@
                         await ffmpeg.deleteFile(outputFilename);
                     } catch (err) {
                         // Check for the specific buffer error
-                        if (err && err.message && err.message.includes('put_bits buffer too small')) {
-                            logError(`Extraction failed at ${currentTime.toFixed(2)}s due to buffer size. Try reducing resolution or JPEG quality.`, err);
+                        if (err && err.message && (err.message.includes('put_bits buffer too small') || err.message.includes('FS error'))) { // Added FS error check here too
+                            logError(`Extraction failed at ${currentTime.toFixed(2)}s due to internal FFmpeg error (possibly buffer size). Try reducing Output Resolution or JPEG Quality.`, err);
                         } else {
                             logError(`Extraction stopped at ${currentTime.toFixed(2)}s`, err);
                         }
