@@ -138,6 +138,7 @@
         const customHeightInput = document.getElementById('customHeightInput');
         const jpegQualityInput = document.getElementById('jpegQualityInput');
         const jpegQualityValue = document.getElementById('jpegQualityValue');
+        const sharpnessThresholdInput = document.getElementById('sharpnessThresholdInput'); // Added missing DOM element
 
         // --- Preferences Storage ---
         function saveUserPreferences() {
@@ -157,7 +158,9 @@
             
             // Save JPEG quality setting
             localStorage.setItem('timeSlice_jpegQuality', jpegQualityInput.value);
-            
+            // Save Sharpness Threshold setting
+            localStorage.setItem('timeSlice_sharpnessThreshold', sharpnessThresholdInput.value); // Added saving for sharpness
+
             logConsole('User preferences saved');
         }
         
@@ -192,7 +195,12 @@
                 jpegQualityInput.value = savedJpegQuality;
                 jpegQualityValue.textContent = savedJpegQuality;
             }
-            
+            // Load Sharpness Threshold setting
+            const savedSharpnessThreshold = localStorage.getItem('timeSlice_sharpnessThreshold'); // Added loading for sharpness
+            if (savedSharpnessThreshold) {
+                sharpnessThresholdInput.value = savedSharpnessThreshold;
+            }
+
             logConsole('User preferences loaded');
         }
 
@@ -421,10 +429,10 @@
 
                 ffmpeg = new FFmpeg();
 
-                // Optional: Remove ffmpeg on log for less spam
-                // ffmpeg.on('log', ({ type, message }) => {
-                //     logConsole(`[ffmpeg ${type}] ${message}`);
-                // });
+                // Enable ffmpeg internal logging
+                ffmpeg.on('log', ({ type, message }) => {
+                     logConsole(`[ffmpeg ${type}] ${message}`);
+                });
 
                 updateStatus("Loading FFmpeg core (this may take a moment)...");
                 logConsole("Loading core/worker with paths:" + JSON.stringify({ coreURL: corePath, classWorkerURL: workerPath }));
@@ -472,7 +480,7 @@
             // Quality 100 => 2, Quality 1 => 31
             const quality = Math.round(31 - ((jpegQualityInput.value / 100) * 29)) || 2;
             
-            const ffmpegArgs = ['-hide_banner', '-loglevel', 'warning', '-ss', formattedTime, '-i', inputFilename];
+            const ffmpegArgs = ['-hide_banner', '-loglevel', 'debug', '-ss', formattedTime, '-i', inputFilename]; // Changed loglevel to debug
             if (scaleFilter) {
                 ffmpegArgs.push('-vf', scaleFilter);
             }
@@ -481,6 +489,9 @@
             ffmpegArgs.push('-q:v', quality.toString());
             
             ffmpegArgs.push('-vframes', '1', outputFilename);
+
+            logConsole(`Executing FFmpeg command: ffmpeg ${ffmpegArgs.join(' ')}`); // Log the command
+
             await ffmpeg.exec(ffmpegArgs);
         }
 
@@ -550,14 +561,29 @@
             let duration = 0;
             try {
                 duration = await getVideoDuration(file);
+                logConsole(`Video duration for ${file.name}: ${duration} seconds`); // Log duration
             } catch (err) {
-                logError('Unable to read video duration.', err);
+                logError(`Unable to read video duration for ${file.name}.`, err);
+                return; // Stop processing this file if duration can't be read
+            }
+
+            // Check for invalid or zero duration
+            if (!duration || duration <= 0 || !isFinite(duration)) {
+                logError(`Invalid or zero duration (${duration}) detected for ${file.name}. Skipping file.`);
                 return;
             }
 
+
             const inputFilename = `input_${fileIndex}.` + file.name.split('.').pop();
-            const data = new Uint8Array(await file.arrayBuffer());
-            await ffmpeg.writeFile(inputFilename, data);
+            try {
+                const data = new Uint8Array(await file.arrayBuffer());
+                await ffmpeg.writeFile(inputFilename, data);
+                logConsole(`Successfully wrote ${inputFilename} to FFmpeg FS.`);
+            } catch (writeError) {
+                 logError(`Failed to write ${inputFilename} to FFmpeg FS.`, writeError);
+                 return; // Stop processing if writing fails
+            }
+
 
             // Extract original filename without extension and sanitize it
             const originalFilename = file.name.split('.').slice(0, -1).join('.');
@@ -565,7 +591,7 @@
 
             let savedFiles = [];
             let currentTime = 0;
-            const userThreshold = parseFloat(document.getElementById('sharpnessThresholdInput')?.value || '100');
+            const userThreshold = parseFloat(sharpnessThresholdInput?.value || '100'); // Use correct DOM element
             while (currentTime < duration) {
                 const outputFilename = `${sanitizedFilename}__${currentTime.toFixed(2)}s.jpg`;
                 // Check if a file with the same name already exists (and skip if it does)
@@ -674,7 +700,8 @@
         document.getElementById('fpsInput').addEventListener('change', saveUserPreferences);
         customWidthInput.addEventListener('change', saveUserPreferences);
         customHeightInput.addEventListener('change', saveUserPreferences);
-        
+        sharpnessThresholdInput.addEventListener('change', saveUserPreferences); // Added listener for sharpness
+
         // Update quality display value and save preference
         jpegQualityInput.addEventListener('input', () => {
             jpegQualityValue.textContent = jpegQualityInput.value;
