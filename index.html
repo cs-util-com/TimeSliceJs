@@ -629,8 +629,28 @@
                     try {
                         logConsole(`Attempting to extract frame: ${outputFilename}`); // Add log before extraction attempt
                         await extractFrame(inputFilename, currentTime, outputFilename);
+
                         logConsole(`Attempting to read frame data: ${outputFilename}`); // Add log before reading file
-                        const frameData = await ffmpeg.readFile(outputFilename);
+                        let frameData;
+                        try {
+                            frameData = await ffmpeg.readFile(outputFilename);
+                        } catch (readError) {
+                            // Check if this FS error might be related to the put_bits issue
+                            if (readError && readError.message && readError.message.includes('FS error')) {
+                                logError(`Failed to read frame data for ${outputFilename} after extraction. This might be due to an internal FFmpeg error (like 'put_bits buffer too small') often caused by high resolution/quality. Try reducing Output Resolution or JPEG Quality.`, readError);
+                            } else {
+                                logError(`Failed to read frame data for ${outputFilename}.`, readError);
+                            }
+                            // Attempt cleanup even if read fails, then re-throw
+                            try {
+                                await ffmpeg.deleteFile(outputFilename);
+                                logConsole(`Deleted potentially incomplete frame from FS: ${outputFilename}`);
+                            } catch (deleteErr) {
+                                logError(`Also failed to delete ${outputFilename} after read error.`, deleteErr);
+                            }
+                            throw readError; // Re-throw to be caught by the outer catch, which breaks the loop
+                        }
+
                         logConsole(`Frame data read, attempting sharpness check: ${outputFilename}`); // Add log before sharpness check
                         const sharpness = await measureSharpness(frameData);
                         logConsole(`Frame at ${currentTime.toFixed(2)}s has sharpness ${sharpness.toFixed(2)}`);
@@ -642,6 +662,9 @@
                                 logConsole(`Successfully saved: ${outputFilename}`); // Add log after successful save
                             } else {
                                 logConsole(`Save failed for: ${outputFilename}`); // Add log if save fails
+                                // If save fails due to permission loss, the loop should stop anyway
+                                // because directoryHandle will be nullified.
+                                if (!directoryHandle) break;
                             }
                         } else {
                             logConsole(`Frame skipped due to low sharpness: ${sharpness.toFixed(2)}`);
@@ -649,13 +672,10 @@
                         logConsole(`Attempting to delete frame from FS: ${outputFilename}`); // Add log before delete
                         await ffmpeg.deleteFile(outputFilename);
                         logConsole(`Deleted frame from FS: ${outputFilename}`); // Add log after delete
-                    } catch (err) {
-                        // Check for the specific buffer error or FS errors
-                        if (err && err.message && (err.message.includes('put_bits buffer too small') || err.message.includes('FS error'))) { 
-                            logError(`Extraction failed at ${currentTime.toFixed(2)}s due to internal FFmpeg error (possibly buffer size). Try reducing Output Resolution or JPEG Quality.`, err);
-                        } else {
-                            // Log any other error during the extraction/processing steps
-                            logError(`Processing stopped at ${currentTime.toFixed(2)}s for ${outputFilename}`, err); 
+                    } catch (err) { // Outer catch block for extractFrame or re-thrown readError
+                        // Log the error that caused the stop (already logged with specifics if it was readError)
+                        if (!err.message?.includes('FS error')) { // Avoid double logging FS error details
+                            logError(`Processing stopped at ${currentTime.toFixed(2)}s for ${outputFilename}`, err);
                         }
                         break; // Stop processing this video on error
                     }
