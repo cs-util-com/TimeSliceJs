@@ -13,8 +13,27 @@
              word-wrap: break-word; /* Breaks long words */
         }
     </style>
-    <!-- Load OpenCV -->
-    <script async src="https://docs.opencv.org/4.9.0/opencv.js" onerror="onOpenCvScriptError(event)"></script>
+    <!-- Define global OpenCV ready callback placeholder -->
+    <script>
+        // Placeholder function to be assigned later by the module script
+        window.onOpenCvReadyCallback = () => {
+            console.warn("OpenCV loaded but onOpenCvReadyCallback was not assigned by the module.");
+        };
+        // Define the global Module object for OpenCV
+        var Module = {
+            // Optional: Specify wasm location if not default
+            // wasmBinaryFile: 'https://docs.opencv.org/4.9.0/opencv_js.wasm', 
+            onRuntimeInitialized: () => window.onOpenCvReadyCallback()
+        };
+        // Global error handler for script loading
+        function onOpenCvScriptError(event) {
+             console.error("Error loading OpenCV.js script. Check network and path.");
+             // Optionally, notify the main module if needed
+             if (window.handleOpenCvLoadError) {
+                 window.handleOpenCvLoadError();
+             }
+        }
+    </script>
 </head>
 <body class="bg-gray-100 font-sans">
     <div class="container mx-auto p-6 max-w-2xl bg-white shadow-md rounded-lg mt-10">
@@ -211,6 +230,42 @@
 
         let ffmpeg = null; // To hold the FFmpeg instance
         let directoryHandle = null; // To hold the directory handle
+
+        // --- OpenCV Ready Promise ---
+        let resolveCvReady;
+        const cvReadyPromise = new Promise(resolve => {
+            resolveCvReady = resolve;
+        });
+        let isCvReady = false; // Keep track of status
+
+        // Assign the actual OpenCV ready logic to the global callback
+        window.onOpenCvReadyCallback = async () => {
+            try {
+                // Ensure cv is usable (it might be a promise initially)
+                if (typeof cv === 'undefined') throw new Error("cv is undefined after ready callback");
+                cv = (cv instanceof Promise) ? await cv : cv; // Handle if cv is initially a promise
+                isCvReady = true;
+                logConsole('OpenCV.js is ready.');
+                if (resolveCvReady) {
+                    resolveCvReady(); // Resolve the promise
+                } else {
+                     logConsole('Warning: resolveCvReady was not defined when OpenCV loaded.');
+                }
+            } catch (error) {
+                 isCvReady = false;
+                 logError('Error initializing OpenCV within ready callback.', error);
+                 // Optionally reject the promise or handle the error state
+            }
+        };
+        
+        // Optional: Handle script load error if needed
+        window.handleOpenCvLoadError = () => {
+            isCvReady = false;
+            logError("OpenCV.js script failed to load.");
+            // Optionally reject the promise or set an error state
+            // rejectCvReady(new Error("OpenCV script failed to load")); 
+        };
+
 
         // --- Helper Functions ---
         function logConsole(message) {
@@ -493,6 +548,9 @@
             // Explicitly set pixel format for output JPEG
             ffmpegArgs.push('-pix_fmt', 'yuvj420p'); 
             
+            // Add -update 1 flag for single image output
+            ffmpegArgs.push('-update', '1'); 
+            
             ffmpegArgs.push('-vframes', '1', outputFilename);
 
             logConsole(`Executing FFmpeg command: ffmpeg ${ffmpegArgs.join(' ')}`); 
@@ -519,23 +577,9 @@
             });
         }
 
-        let isCvReady = false;
-        function onOpenCvScriptError(event) {
-            logConsole("Error loading OpenCV.js script");
-        }
-        // Prepare OpenCV and set a flag when ready
-        var Module = {
-            onRuntimeInitialized: function() {
-                isCvReady = true;
-                logConsole('OpenCV.js is ready.');
-            }
-        };
         // Measure sharpness (Laplacian variance)
         async function measureSharpness(buffer) {
-            if (!isCvReady) {
-                logConsole('OpenCV not ready, returning sharpness 0.'); // Log if OpenCV isn't ready
-                return 0; 
-            }
+            // No need to check isCvReady here anymore, as processFrames will wait
             logConsole('Measuring sharpness with OpenCV...'); // Log entry into the function
             return new Promise((resolve) => {
                 const blobURL = URL.createObjectURL(new Blob([buffer], { type: 'image/jpeg' }));
@@ -600,6 +644,12 @@
                 return;
             }
 
+            // Wait for OpenCV to be ready before starting the loop
+            if (!isCvReady) {
+                updateStatus(`Waiting for OpenCV to initialize...`);
+                await cvReadyPromise;
+                updateStatus(`OpenCV ready. Starting frame processing for ${file.name}...`);
+            }
 
             const inputFilename = `input_${fileIndex}.` + file.name.split('.').pop();
             try {
@@ -610,7 +660,6 @@
                  logError(`Failed to write ${inputFilename} to FFmpeg FS.`, writeError);
                  return; // Stop processing if writing fails
             }
-
 
             // Extract original filename without extension and sanitize it
             const originalFilename = file.name.split('.').slice(0, -1).join('.');
@@ -689,7 +738,6 @@
             } catch (deleteError) {
                  logError(`Failed to delete ${inputFilename} from FFmpeg FS.`, deleteError);
             }
-
 
             if (savedFiles.length > 0) {
                 displaySavedFilesInfo(savedFiles);
@@ -799,5 +847,8 @@
         loadUserPreferences(); // Load saved preferences
 
     </script>
+
+    <!-- Load OpenCV script at the END of the body -->
+    <script async src="https://docs.opencv.org/4.9.0/opencv.js" onerror="onOpenCvScriptError(event)"></script>
 </body>
 </html>
