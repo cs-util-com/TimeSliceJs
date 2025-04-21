@@ -863,9 +863,11 @@
             totalFramesInput.value = ''; // Clear total frames field
 
             const files = e.target.files;
+            let firstVideoFile = null; // Declare here with let, initialize to null
+
             if (files.length > 0) {
                 // Use the first video file to determine duration for sync
-                const firstVideoFile = files[0];
+                firstVideoFile = files[0]; // Assign here
                 logConsole(`Attempting to get duration for ${firstVideoFile.name} for UI sync...`);
                 try {
                     // Check readability first
@@ -877,9 +879,10 @@
                     // Initial sync after getting duration
                     updateTotalFramesFromFps();
                 } catch (err) {
-                    logError(`Unable to read file or get duration for "${firstVideoFile.name}" needed for sync.`, err);
+                    logError(`Unable to read file or get duration for \"${firstVideoFile?.name || 'selected file'}\" needed for sync.`, err);
                     currentVideoDuration = null; // Ensure duration is null on error
                     totalFramesInput.value = ''; // Clear total frames field
+                    firstVideoFile = null; // Reset on error
                 }
             } else {
                  logConsole("No video selected, clearing duration and total frames.");
@@ -890,14 +893,24 @@
                 try {
                     await file.arrayBuffer();
                     // Log access only if it wasn't the first file already logged
-                    if (file !== firstVideoFile) {
-                        logConsole(`File "${file.name}" is accessible.`);
+                    // Check if firstVideoFile exists before comparing
+                    if (firstVideoFile && file !== firstVideoFile) {
+                        logConsole(`File \"${file.name}\" is accessible.`);
                     }
                 } catch (err) {
                      // Log error only if it wasn't the first file already logged with an error
-                    if (file !== firstVideoFile || currentVideoDuration !== null) {
-                        logError(`Unable to read file "${file.name}" right after selection.`, err);
-                    }
+                     // Check if firstVideoFile exists before comparing
+                     if (firstVideoFile && file !== firstVideoFile) {
+                         // Error occurred on a subsequent file
+                         logError(`Unable to read file \"${file.name}\" right after selection.`, err);
+                     } else if (!firstVideoFile && files.length > 0) {
+                         // Error likely occurred on the first file during duration check, or this is the first file
+                         // Avoid logging duplicate errors if duration check already failed
+                         if (currentVideoDuration !== null || !logError.lastErrorMessage?.includes(file.name)) {
+                            logError(`Unable to read file \"${file.name}\" right after selection.`, err);
+                         }
+                     }
+                     // If firstVideoFile exists AND file === firstVideoFile, the error was already logged in the duration block, so do nothing here.
                 }
             }
         });
