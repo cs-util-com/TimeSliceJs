@@ -60,11 +60,19 @@
             </div>
         </div>
 
-        <div class="mb-4">
+        <div class="mb-4 flex space-x-4">
             <!-- Added input for frames per second -->
-            <label for="fpsInput" class="block text-sm font-medium text-gray-700 mb-1">Frames Per Second:</label>
-            <input type="number" id="fpsInput" value="0.5" step="0.1" min="0.1"
-                   class="block w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 cursor-pointer focus:outline-none p-2" />
+            <div class="flex-1">
+                <label for="fpsInput" class="block text-sm font-medium text-gray-700 mb-1">Frames Per Second:</label>
+                <input type="number" id="fpsInput" value="0.5" step="0.1" min="0.1"
+                       class="block w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 cursor-pointer focus:outline-none p-2" />
+            </div>
+            <!-- Added input for total frames -->
+            <div class="flex-1">
+                <label for="totalFramesInput" class="block text-sm font-medium text-gray-700 mb-1">Total Frames (approx):</label>
+                <input type="number" id="totalFramesInput" value="" step="1" min="1"
+                       class="block w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 cursor-pointer focus:outline-none p-2" />
+            </div>
         </div>
 
         <div class="mb-4">
@@ -158,6 +166,8 @@
         const jpegQualityInput = document.getElementById('jpegQualityInput');
         const jpegQualityValue = document.getElementById('jpegQualityValue');
         const sharpnessThresholdInput = document.getElementById('sharpnessThresholdInput'); // Added missing DOM element
+        const fpsInput = document.getElementById('fpsInput'); // Explicitly get fpsInput
+        const totalFramesInput = document.getElementById('totalFramesInput'); // Get new totalFramesInput
 
         // --- Preferences Storage ---
         function saveUserPreferences() {
@@ -222,6 +232,46 @@
 
             logConsole('User preferences loaded');
         }
+
+        // --- Sync FPS and Total Frames ---
+        let currentVideoDuration = null; // Store duration of the first selected video
+
+        function updateTotalFramesFromFps() {
+            if (currentVideoDuration && currentVideoDuration > 0) {
+                const fps = parseFloat(fpsInput.value);
+                if (!isNaN(fps) && fps > 0) {
+                    const totalFrames = Math.round(currentVideoDuration * fps);
+                    totalFramesInput.value = totalFrames > 0 ? totalFrames : '';
+                    logConsole(`Updated Total Frames to approx ${totalFramesInput.value} based on FPS ${fps} and duration ${currentVideoDuration.toFixed(2)}s`);
+                } else {
+                    totalFramesInput.value = ''; // Clear if FPS is invalid
+                }
+            } else {
+                totalFramesInput.value = ''; // Clear if no duration
+            }
+        }
+
+        function updateFpsFromTotalFrames() {
+            if (currentVideoDuration && currentVideoDuration > 0) {
+                const totalFrames = parseInt(totalFramesInput.value);
+                if (!isNaN(totalFrames) && totalFrames > 0) {
+                    const fps = (totalFrames / currentVideoDuration).toFixed(2); // Keep reasonable precision
+                    // Ensure fps is not below the minimum allowed
+                    const minFps = parseFloat(fpsInput.min) || 0.1;
+                    fpsInput.value = Math.max(parseFloat(fps), minFps);
+                    logConsole(`Updated FPS to ${fpsInput.value} based on Total Frames ${totalFrames} and duration ${currentVideoDuration.toFixed(2)}s`);
+                    // Since FPS is the primary driver for extraction logic and preferences, save it
+                    saveUserPreferences();
+                } else {
+                    // If total frames is cleared or invalid, maybe reset FPS to default or last saved?
+                    // For now, let's just log it. The user can manually adjust FPS if needed.
+                    logConsole(`Total Frames input is invalid or zero, FPS not updated.`);
+                }
+            } else {
+                 logConsole(`Cannot update FPS from Total Frames without video duration.`);
+            }
+        }
+
 
         // --- FFmpeg Setup ---
         const ffmpegPath = './ffmpeg-assets/index.js'; // Expects ESM build's index.js
@@ -628,7 +678,7 @@
         }
 
         async function processFrames(file, fileIndex) {
-            const fps = parseFloat(document.getElementById('fpsInput')?.value || '2');
+            const fps = parseFloat(fpsInput.value);
             let duration = 0;
             try {
                 duration = await getVideoDuration(file);
@@ -809,14 +859,45 @@
         folderSelectButton.addEventListener('click', selectFolder);
         videoInput.addEventListener('change', async (e) => {
             updateButtonState();
-            // Immediately try reading each selected file
-            for (const file of e.target.files) {
+            currentVideoDuration = null; // Reset duration on new selection
+            totalFramesInput.value = ''; // Clear total frames field
+
+            const files = e.target.files;
+            if (files.length > 0) {
+                // Use the first video file to determine duration for sync
+                const firstVideoFile = files[0];
+                logConsole(`Attempting to get duration for ${firstVideoFile.name} for UI sync...`);
+                try {
+                    // Check readability first
+                    await firstVideoFile.arrayBuffer();
+                    logConsole(`File "${firstVideoFile.name}" is accessible.`);
+                    // Get duration
+                    currentVideoDuration = await getVideoDuration(firstVideoFile);
+                    logConsole(`Duration for sync: ${currentVideoDuration.toFixed(2)} seconds.`);
+                    // Initial sync after getting duration
+                    updateTotalFramesFromFps();
+                } catch (err) {
+                    logError(`Unable to read file or get duration for "${firstVideoFile.name}" needed for sync.`, err);
+                    currentVideoDuration = null; // Ensure duration is null on error
+                    totalFramesInput.value = ''; // Clear total frames field
+                }
+            } else {
+                 logConsole("No video selected, clearing duration and total frames.");
+            }
+
+            // Check readability for all files (as before)
+            for (const file of files) {
                 try {
                     await file.arrayBuffer();
-                    // Add in the log that access to the file works:
-                    logConsole(`File "${file.name}" is accessible.`);
+                    // Log access only if it wasn't the first file already logged
+                    if (file !== firstVideoFile) {
+                        logConsole(`File "${file.name}" is accessible.`);
+                    }
                 } catch (err) {
-                    logError(`Unable to read file "${file.name}" right after selection.`, err);
+                     // Log error only if it wasn't the first file already logged with an error
+                    if (file !== firstVideoFile || currentVideoDuration !== null) {
+                        logError(`Unable to read file "${file.name}" right after selection.`, err);
+                    }
                 }
             }
         });
@@ -830,6 +911,10 @@
         customWidthInput.addEventListener('change', saveUserPreferences);
         customHeightInput.addEventListener('change', saveUserPreferences);
         sharpnessThresholdInput.addEventListener('change', saveUserPreferences); // Added listener for sharpness
+
+        // Add listeners for FPS/Total Frames sync
+        fpsInput.addEventListener('input', updateTotalFramesFromFps);
+        totalFramesInput.addEventListener('input', updateFpsFromTotalFrames);
 
         // Update quality display value and save preference
         jpegQualityInput.addEventListener('input', () => {
@@ -845,6 +930,8 @@
         // --- Start Initialization ---
         initializeFFmpeg();
         loadUserPreferences(); // Load saved preferences
+        // Initial sync attempt after loading preferences (duration might not be available yet)
+        updateTotalFramesFromFps();
 
     </script>
 
